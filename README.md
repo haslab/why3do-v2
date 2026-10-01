@@ -24,12 +24,10 @@ for proof management.
 | [wip/](wip) | Work-in-progress examples (not part of the library) |
 
 Cross-file dependencies in why3find are resolved through installed
-packages, not folder loadpaths. Files that are depended upon by other
-files (`inductiveness.mlw`, `refinement.mlw`, `counter.mlw`,
-`counter_alt.mlw`, `alternate.mlw`, `mutexAbstractN.mlw`,
-`mutexAbstract.mlw`, `Peterson.mlw`, `MutexSpec.mlw`, `PetersonFilter.mlw`,
-`controlledFlooding.mlw`) are registered as why3find packages.
-See `why3find.json` for the full package list.
+packages, not folder loadpaths. Every `.mlw` file is registered as a
+why3find package by `setup.sh`, so cross-file `use` and `clone`
+references resolve through the installed packages. See `why3find.json`
+for the full package list.
 
 ## Setup
 

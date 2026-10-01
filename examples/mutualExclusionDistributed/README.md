@@ -24,7 +24,7 @@ exclusion algorithms using message passing.
   send-and-receive limitation (and the stale-request assumption it
   carries) into proved properties
 - [suzukiKasami.mlw](suzukiKasami.mlw): Suzuki-Kasami distributed mutex
-  algorithm using a token with a queue. Refines TokenMutex
+  algorithm using a token with a queue. Refines tokenMutex
 
 ## Refinement Hierarchy
 
