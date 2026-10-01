@@ -9,11 +9,10 @@
     "leaderElectMaxAlive", "bully",
     "leaderElectDynamicFull",
     "leaderElectMaxAliveDynamicFull", "bullyDynamicFull",
-    "mutual_exclusion_spec",
     "PetersonFilter",
     "MutexSpec",
     "Lamport",
-    "RicartAgrawala",
+    "RicartAgrawala", "RicartAgrawalaNet",
     "tokenMutex", "suzukiKasami",
     "raftLedger", "raftCore", "raftNet",
     "controlledFlooding"

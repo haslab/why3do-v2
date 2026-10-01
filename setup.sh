@@ -36,6 +36,7 @@ install_pkg PetersonFilter  examples/mutualExclusionConcurrent/PetersonFilter.ml
 install_pkg MutexSpec      examples/mutualExclusionDistributed/MutexSpec.mlw
 install_pkg Lamport        examples/mutualExclusionDistributed/Lamport.mlw
 install_pkg RicartAgrawala examples/mutualExclusionDistributed/RicartAgrawala.mlw
+install_pkg RicartAgrawalaNet examples/mutualExclusionDistributed/RicartAgrawalaNet.mlw
 install_pkg tokenMutex     examples/mutualExclusionDistributed/tokenMutex.mlw
 install_pkg suzukiKasami   examples/mutualExclusionDistributed/suzukiKasami.mlw
 
@@ -61,7 +62,7 @@ install_pkg leaderElectMaxAliveDynamicFull   examples/dynamicBully/leaderElectMa
 install_pkg bullyDynamicFull                 examples/dynamicBully/bullyDynamicFull.mlw
 
 # wip/petersonN (student project)
-install_pkg mutual_exclusion_spec            wip/petersonN/refinement/mutual_exclusion_spec.mlw
+# (removed with the wip/ directory in commit 6afc00a)
 
 # raft (refinement chain: raftLedger -> raftCore -> raftNet)
 install_pkg raftLedger                      examples/raft/raftLedger.mlw

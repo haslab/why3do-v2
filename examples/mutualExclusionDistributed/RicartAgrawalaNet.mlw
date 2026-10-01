@@ -1,0 +1,464 @@
+(* ============================================================
+   Ricart-Agrawala distributed mutual exclusion, with replies in
+   flight.
+
+   Refines Ricart_Agrawala, and hence MutexSpec.
+
+   The machine this one refines collapses the sending and the receipt
+   of a reply into one atomic step: grant_Reply both records the
+   grantor's decision and credits it to the requester, so no reply is
+   ever in flight.  Its header lists two consequences of that fusion
+   as limitations.  This machine splits the step — send_Reply puts a
+   tagged reply on the wire, deliver_Reply takes it off — and both
+   consequences become theorems:
+
+     - A reply in flight always answers the requester's *current*
+       request (replyInFlightFresh, from pendingLive).  In a channel
+       model a request from an earlier round could in principle be
+       answered after its sender had re-requested, and the reply
+       counted toward the new request; the fused machine excludes
+       that situation by construction and calls it an assumption.
+       Here it is excluded by proof: a requester cannot re-request
+       while any reply to its current request is undelivered, because
+       entry requires every reply taken; and the grantor cannot
+       reply twice to one request, because its own record blocks it.
+
+     - The grantor's own "already replied" record agrees with the
+       requester's (grantorAgreesWithRequester, from
+       grantorRecord).  grant_Reply tests the requester's record,
+       where an implementation would consult the grantor's own flag;
+       under the fusion the two coincide, as an assumption.  Here
+       both are present and their agreement is proved, which is what
+       justifies an implementation that keeps only its own.
+
+   The state embeds a Ricart_Agrawala world as a field, `base`, as
+   raftNet embeds raftCore.  Its `replied` is the *joined* view — a
+   reply counts as held as soon as it is sent — and replyInView
+   maintains it as the wire plus the requester's taken record.  The
+   refinement map is the projection, the actions that Ricart_Agrawala
+   already has are reused verbatim on `base`, and the simulation
+   obligations reduce to the corresponding abstract action applied to
+   `w.base`.
+
+   State      base    the Ricart_Agrawala state: per-process status
+                      (NCS, Requesting, CS), Lamport clock, own
+                      pending request, and the joined reply record
+              recv    recv[r][g] : r has taken delivery of g's reply
+                      to r's current request
+              wire    wire[g][r] : g's reply to r is in flight,
+                      tagged with the timestamp of r's request it
+                      answers; at most one slot per (granter,
+                      requester) pair
+              sent    sent[g][r] : g's own record that it has replied
+                      to r's request with that timestamp.  It
+                      survives the request it answers, which is what
+                      lets a new request be granted while making a
+                      second reply to the same request impossible.
+
+   Actions    send_Request    as in Ricart_Agrawala
+              recv_Request    as in Ricart_Agrawala
+              send_Reply      g decides and stamps its reply with
+                              r's request timestamp; g's clock
+                              advances past r's timestamp (the
+                              abstract grant_Reply)
+              deliver_Reply   the reply reaches r, which credits it
+                              after checking the tag against its own
+                              request (a stutter of the abstraction)
+              enter_CS        r enters once every reply has been
+                              taken — strictly stronger than the
+                              abstract guard, which also counts
+                              replies still on the wire
+              leave_CS        as in Ricart_Agrawala; the grantors'
+                              records survive
+
+   Invariant  pendingLive     a reply on the wire names valid
+                              processes, answers the requester's
+                              current request, and that request is
+                              therefore outstanding
+              wireRecvExcl    a reply is never both in flight and
+                              taken
+              replyInView     the joined record says a reply is held
+                              exactly when it is on the wire or has
+                              been taken
+              grantorRecord   while r is active, the grantor's own
+                              record says Some (r's request) exactly
+                              when the joined record holds the reply
+              reqLeClock      timestamps never run below zero, and
+                              a request's timestamp is at most the
+                              requester's clock
+              sentLeClock     a grantor's record cannot name a
+                              timestamp above the requester's clock;
+                              since a fresh request is stamped above
+                              the clock, a stale record never blocks
+                              a new grant
+
+   The single slot per (granter, requester) pair is no restriction on
+   reachable behaviour: the grantor cannot put a second reply to the
+   same request on the wire (its record blocks it), and the requester
+   cannot have a second request while the first reply is undelivered
+   (entry has not happened yet).  The slot is where pendingLive does
+   its work: it says the slot can only be occupied on behalf of the
+   request that is outstanding now.
+
+   Limitations
+     - Requests are still instantaneous: recv_Request is an
+       observation, not a delivery, so only replies travel.  Putting
+       requests on the wire would be the next refinement layer.
+     - The wire is a slot, not a queue: a reply may be delayed without
+       bound, but there is no duplication, loss, or reordering to
+       model, because at most one reply per pair is ever in flight.
+     - deliver_Reply checks the reply's tag against the requester's
+       own request, as an implementation would.  By pendingLive the
+       check never fails on a reachable state, so it constrains
+       nothing; it is kept because it is the receiver's honest guard.
+     - send_Reply's and enter_CS's guards include the abstract
+       grant_Reply_enbld and enter_CS_enbld, so the abstract actions
+       can be applied unconditionally (raftNet's pattern).  Under the
+       invariant those conjuncts are implied by the rest —
+       sendReplyGuardIsNotRestrictive and enterGuardIsNotRestrictive
+       state this explicitly — so they constrain no reachable
+       behaviour.
+     - Safety only.  Deadlock-freedom and starvation-freedom remain
+       out of scope; like Ricart_Agrawala, this machine has the state
+       property (csHasPriority) they would be built on.
+     - Clocks are unbounded integers; n_processes is fixed and
+       processes do not crash.
+   ============================================================ *)
+
+module Ricart_Agrawala_Net
+
+  use int.Int
+  use map.Map
+  use map.Const
+  use option.Option
+  use MutexSpec.MutexSpec
+  use RicartAgrawala.Ricart_Agrawala
+
+  type world = {
+    base : Ricart_Agrawala.world;
+    recv : map MutexSpec.pid (map MutexSpec.pid bool);
+    wire : map MutexSpec.pid (map MutexSpec.pid (option Ricart_Agrawala.timestamp));
+    sent : map MutexSpec.pid (map MutexSpec.pid (option Ricart_Agrawala.timestamp));
+  }
+
+  predicate activeN (w: world) (r: MutexSpec.pid) =
+    w.base.state[r] = Ricart_Agrawala.Requesting \/
+    w.base.state[r] = Ricart_Agrawala.CS
+
+  (* The timestamp a reply carries; 0 for an empty slot. *)
+  function tag (o: option Ricart_Agrawala.timestamp)
+               : Ricart_Agrawala.timestamp =
+    match o with Some t -> t | None -> 0 end
+
+  (* The refinement map is the projection. *)
+  let ghost function refn (w: world) : Ricart_Agrawala.world = w.base
+
+  (* ---------------------------------------------------------------- *)
+  (* Inductive invariant                                              *)
+  (* ---------------------------------------------------------------- *)
+
+  (* A reply on the wire answers the requester's current, outstanding
+     request.  This is the conjunct that turns RicartAgrawala's
+     stale-request assumption into a theorem. *)
+  predicate pendingLive (w: world) =
+    forall g r: MutexSpec.pid.
+      w.wire[g][r] <> None ->
+      valid_p g /\ valid_p r /\ g <> r /\
+      w.base.state[r] = Ricart_Agrawala.Requesting /\
+      tag (w.wire[g][r]) = w.base.last_req[r]
+
+  (* A reply is never both in flight and taken. *)
+  predicate wireRecvExcl (w: world) =
+    forall g r: MutexSpec.pid.
+      w.wire[g][r] <> None -> not w.recv[r][g]
+
+  (* The joined record counts a reply as held exactly when it is on
+     the wire or has been taken. *)
+  predicate replyInView (w: world) =
+    forall r g: MutexSpec.pid.
+      w.base.replied[r][g] <->
+      (w.wire[g][r] <> None \/ w.recv[r][g])
+
+  (* While r has an outstanding request, the grantor's own record
+     agrees with the joined one. *)
+  predicate grantorRecord (w: world) =
+    forall g r: MutexSpec.pid. activeN w r ->
+      (w.sent[g][r] = Some (w.base.last_req[r]) <->
+       w.base.replied[r][g])
+
+  (* Timestamps never run below zero, and a request's timestamp is at
+     most the requester's clock.  The lower bound is what lets
+     leave_CS reset last_req to 0 without breaking the upper one. *)
+  predicate reqLeClock (w: world) =
+    forall r: MutexSpec.pid.
+      0 <= w.base.last_req[r] /\
+      w.base.last_req[r] <= w.base.num[r]
+
+  (* A grantor's record cannot name a timestamp above the
+     requester's clock. *)
+  predicate sentLeClock (w: world) =
+    forall g r: MutexSpec.pid.
+      w.sent[g][r] <> None -> tag (w.sent[g][r]) <= w.base.num[r]
+
+  predicate inv (w: world) =
+    pendingLive w /\ wireRecvExcl w /\ replyInView w /\
+    grantorRecord w /\ reqLeClock w /\ sentLeClock w
+
+  (* No reply is in flight to a process that has no outstanding
+     request.  This is the pendingLive half that leave_CS,
+     send_Request, and enter_CS all need, factored out so each of
+     their preservation obligations can use it as one fact instead of
+     re-deriving it per granter. *)
+  let lemma wireEmptyWithoutRequest (w: world) (r g: MutexSpec.pid)
+    requires { inv w }
+    requires { w.base.state[r] <> Ricart_Agrawala.Requesting }
+    ensures  { w.wire[g][r] = None }
+  = ()
+
+  (* ---------------------------------------------------------------- *)
+  (* Initial state                                                    *)
+  (* ---------------------------------------------------------------- *)
+
+  predicate initWorld_p (w: world) =
+    w.base = { Ricart_Agrawala.state = const Ricart_Agrawala.NCS;
+               Ricart_Agrawala.num = const 0;
+               Ricart_Agrawala.last_req = const 0;
+               Ricart_Agrawala.replied = const (const false) } /\
+    w.recv = const (const false) /\
+    w.wire = const (const None) /\
+    w.sent = const (const None)
+
+  let ghost predicate initWorld (w: world)
+    ensures { result -> inv w }
+    ensures { result -> Ricart_Agrawala.initWorld (refn w) }
+  = initWorld_p w
+
+  (* ---------------------------------------------------------------- *)
+  (* Actions                                                          *)
+  (* ---------------------------------------------------------------- *)
+
+  (* A1. r issues a request, stamped one above its own clock, and
+         discards whatever it had received for a previous request.
+         The abstract action applies unchanged. *)
+  predicate send_Request_enbld (w: world) (r: MutexSpec.pid) =
+    valid_p r /\ w.base.state[r] = Ricart_Agrawala.NCS
+
+  let ghost function send_Request (w: world) (r: MutexSpec.pid) : world
+    requires { send_Request_enbld w r }
+    ensures  { inv w -> inv result }
+    ensures  { Ricart_Agrawala.send_Request_enbld (refn w) r }
+    ensures  { refn result = Ricart_Agrawala.send_Request (refn w) r }
+  = { w with base = Ricart_Agrawala.send_Request w.base r;
+            recv = w.recv[r <- const false] }
+
+  (* A2. r observes q's pending request and advances its clock.
+         The abstract action applies unchanged. *)
+  predicate recv_Request_enbld (w: world) (r q: MutexSpec.pid) =
+    valid_p r /\ valid_p q /\ r <> q /\
+    w.base.state[q] = Ricart_Agrawala.Requesting
+
+  let ghost function recv_Request (w: world) (r q: MutexSpec.pid) : world
+    requires { recv_Request_enbld w r q }
+    ensures  { inv w -> inv result }
+    ensures  { Ricart_Agrawala.recv_Request_enbld (refn w) r q }
+    ensures  { refn result = Ricart_Agrawala.recv_Request (refn w) r q }
+  = { w with base = Ricart_Agrawala.recv_Request w.base r q }
+
+  (* A3. g decides to reply to r's pending request: the abstract
+         grant decision, plus the grantor's own record, plus the
+         tagged reply on the wire.  Granting advances g's clock past
+         r's timestamp and credits the reply to r in the joined
+         record; delivery later moves it from the wire to r's taken
+         record without touching the abstraction. *)
+  predicate send_Reply_enbld (w: world) (g r: MutexSpec.pid) =
+    Ricart_Agrawala.grant_Reply_enbld w.base g r /\
+    w.sent[g][r] <> Some (w.base.last_req[r])
+
+  let ghost function send_Reply (w: world) (g r: MutexSpec.pid) : world
+    requires { send_Reply_enbld w g r }
+    ensures  { inv w -> inv result }
+    ensures  { Ricart_Agrawala.grant_Reply_enbld (refn w) g r }
+    ensures  { refn result = Ricart_Agrawala.grant_Reply (refn w) g r }
+    ensures  { result.wire[g][r] = Some (w.base.last_req[r]) /\
+               result.sent[g][r] = Some (w.base.last_req[r]) }
+  =
+    let ts = w.base.last_req[r] in
+    { w with
+      base = Ricart_Agrawala.grant_Reply w.base g r;
+      wire = w.wire[g <- w.wire[g][r <- Some ts]];
+      sent = w.sent[g <- w.sent[g][r <- Some ts]] }
+
+  (* A4. g's reply reaches r.  r checks the tag against its own
+         request and credits the reply.  The abstraction already
+         counted this reply when it was sent, so this is a
+         stutter. *)
+  predicate deliver_Reply_enbld (w: world) (g r: MutexSpec.pid) =
+    valid_p g /\ valid_p r /\ g <> r /\
+    w.wire[g][r] <> None /\
+    tag (w.wire[g][r]) = w.base.last_req[r]
+
+  let ghost function deliver_Reply (w: world) (g r: MutexSpec.pid) : world
+    requires { deliver_Reply_enbld w g r }
+    ensures  { inv w -> inv result }
+    ensures  { refn result = refn w }
+    ensures  { result.recv[r][g] /\ result.wire[g][r] = None }
+  =
+    { w with
+      recv = w.recv[r <- w.recv[r][g <- true]];
+      wire = w.wire[g <- w.wire[g][r <- None]] }
+
+  (* A5. r enters the CS once it has *taken delivery of* every other
+         process's reply — stronger than the abstract guard, which
+         also counts replies still on the wire. *)
+  predicate enter_CS_enbld (w: world) (r: MutexSpec.pid) =
+    Ricart_Agrawala.enter_CS_enbld w.base r /\
+    (forall g: MutexSpec.pid. valid_p g -> g <> r -> w.recv[r][g])
+
+  let ghost function enter_CS (w: world) (r: MutexSpec.pid) : world
+    requires { enter_CS_enbld w r }
+    ensures  { inv w -> inv result }
+    ensures  { Ricart_Agrawala.enter_CS_enbld (refn w) r }
+    ensures  { refn result = Ricart_Agrawala.enter_CS (refn w) r }
+  = { w with base = Ricart_Agrawala.enter_CS w.base r }
+
+  (* A6. r leaves the CS, discarding the replies it took and its
+         request.  The grantors' records survive — that is the
+         point. *)
+  predicate leave_CS_enbld (w: world) (r: MutexSpec.pid) =
+    valid_p r /\ w.base.state[r] = Ricart_Agrawala.CS
+
+  let ghost function leave_CS (w: world) (r: MutexSpec.pid) : world
+    requires { leave_CS_enbld w r }
+    ensures  { inv w -> inv result }
+    ensures  { Ricart_Agrawala.leave_CS_enbld (refn w) r }
+    ensures  { refn result = Ricart_Agrawala.leave_CS (refn w) r }
+  = { w with base = Ricart_Agrawala.leave_CS w.base r;
+            recv = w.recv[r <- const false] }
+
+  (* ---------------------------------------------------------------- *)
+  (* Transition relation                                              *)
+  (* ---------------------------------------------------------------- *)
+
+  inductive stepind world world =
+  | step_send_request : forall w: world, r: MutexSpec.pid.
+      send_Request_enbld w r -> stepind w (send_Request w r)
+  | step_recv_request : forall w: world, r q: MutexSpec.pid.
+      recv_Request_enbld w r q -> stepind w (recv_Request w r q)
+  | step_send_reply : forall w: world, g r: MutexSpec.pid.
+      send_Reply_enbld w g r -> stepind w (send_Reply w g r)
+  | step_deliver_reply : forall w: world, g r: MutexSpec.pid.
+      deliver_Reply_enbld w g r -> stepind w (deliver_Reply w g r)
+  | step_enter_cs : forall w: world, r: MutexSpec.pid.
+      enter_CS_enbld w r -> stepind w (enter_CS w r)
+  | step_leave_cs : forall w: world, r: MutexSpec.pid.
+      leave_CS_enbld w r -> stepind w (leave_CS w r)
+
+  let ghost predicate step (w1: world) (w2: world) = stepind w1 w2
+
+  clone export refinement.Refinement with
+    type worldC = world, type worldA = Ricart_Agrawala.world,
+    val refn = refn,
+    predicate invC = inv, predicate invA = Ricart_Agrawala.inv,
+    val initWorldC = initWorld,
+    val initWorldA = Ricart_Agrawala.initWorld,
+    val stepC = step, val stepA = Ricart_Agrawala.step
+
+  (* ---------------------------------------------------------------- *)
+  (* Safety properties                                                *)
+  (* ---------------------------------------------------------------- *)
+
+  goal mutualExclusion :
+    forall w: world, p q: MutexSpec.pid. reachableC w ->
+    valid_p p -> valid_p q ->
+    w.base.state[p] = Ricart_Agrawala.CS ->
+    w.base.state[q] = Ricart_Agrawala.CS -> p = q
+
+  goal mutualExclusion_by_refinement :
+    forall w: world. reachableC w -> Ricart_Agrawala.inv (refn w)
+
+  (* A process in the CS has taken every reply, and no reply to it is
+     still on the wire. *)
+  goal repliesTakenBeforeCS :
+    forall w: world, r g: MutexSpec.pid. reachableC w ->
+    valid_p r -> valid_p g -> r <> g ->
+    w.base.state[r] = Ricart_Agrawala.CS ->
+    w.recv[r][g] /\ w.wire[g][r] = None
+
+  (* RicartAgrawala's stale-request assumption, discharged: a reply in
+     flight answers the requester's current request. *)
+  goal replyInFlightFresh :
+    forall w: world, g r: MutexSpec.pid, t: Ricart_Agrawala.timestamp.
+      reachableC w ->
+      w.wire[g][r] = Some t ->
+      valid_p g /\ valid_p r /\ g <> r /\
+      w.base.state[r] = Ricart_Agrawala.Requesting /\
+      t = w.base.last_req[r]
+
+  (* RicartAgrawala's requester-record guard, discharged: the
+     grantor's own record says exactly what the joined record
+     does. *)
+  goal grantorAgreesWithRequester :
+    forall w: world, g r: MutexSpec.pid. reachableC w ->
+    activeN w r ->
+    (w.sent[g][r] = Some (w.base.last_req[r]) <->
+     w.base.replied[r][g])
+
+  (* The timestamps remain load-bearing: whoever is in the CS holds
+     the earliest outstanding request. *)
+  goal csHasPriority :
+    forall w: world, p q: MutexSpec.pid. reachableC w ->
+    valid_p p -> valid_p q -> p <> q ->
+    w.base.state[p] = Ricart_Agrawala.CS ->
+    w.base.state[q] = Ricart_Agrawala.Requesting ->
+    Ricart_Agrawala.prec w.base.last_req[p] p w.base.last_req[q] q
+
+  (* The guards that mention the abstract machine restrict no
+     reachable behaviour: their abstract conjuncts follow from the
+     rest plus the invariant. *)
+  goal sendReplyGuardIsNotRestrictive :
+    forall w: world, g r: MutexSpec.pid. reachableC w ->
+    valid_p g -> valid_p r -> g <> r ->
+    w.base.state[r] = Ricart_Agrawala.Requesting ->
+    w.sent[g][r] <> Some (w.base.last_req[r]) ->
+    (w.base.state[g] = Ricart_Agrawala.NCS \/
+     (w.base.state[g] = Ricart_Agrawala.Requesting /\
+      Ricart_Agrawala.prec w.base.last_req[r] r w.base.last_req[g] g)) ->
+    Ricart_Agrawala.grant_Reply_enbld w.base g r
+
+  goal enterGuardIsNotRestrictive :
+    forall w: world, r: MutexSpec.pid. reachableC w ->
+    valid_p r ->
+    w.base.state[r] = Ricart_Agrawala.Requesting ->
+    (forall g: MutexSpec.pid. valid_p g -> g <> r -> w.recv[r][g]) ->
+    Ricart_Agrawala.enter_CS_enbld w.base r
+
+  (* Non-vacuity witness: with two processes, a request, a grant, a
+     delivery, and an entry actually happen. *)
+  let lemma initialStateMakesProgress ()
+    requires { MutexSpec.n_processes = 2 }
+    ensures  { exists w0 w1 w2 w3 w4: world.
+      initWorld w0 /\
+      step w0 w1 /\ step w1 w2 /\ step w2 w3 /\ step w3 w4 /\
+      w4.base.state[0] = Ricart_Agrawala.CS }
+  =
+    let w0 = { base = { Ricart_Agrawala.state = const Ricart_Agrawala.NCS;
+                        Ricart_Agrawala.num = const 0;
+                        Ricart_Agrawala.last_req = const 0;
+                        Ricart_Agrawala.replied = const (const false) };
+                recv = const (const false);
+                wire = const (const None);
+                sent = const (const None) } in
+    assert { initWorld w0 };
+    let w1 = send_Request w0 0 in
+    assert { stepind w0 w1 };
+    assert { send_Reply_enbld w1 1 0 };
+    let w2 = send_Reply w1 1 0 in
+    assert { stepind w1 w2 };
+    assert { deliver_Reply_enbld w2 1 0 };
+    let w3 = deliver_Reply w2 1 0 in
+    assert { stepind w2 w3 };
+    assert { enter_CS_enbld w3 0 };
+    let w4 = enter_CS w3 0 in
+    assert { stepind w3 w4 }
+
+end

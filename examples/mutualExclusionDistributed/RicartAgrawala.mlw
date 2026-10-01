@@ -51,7 +51,11 @@
        records the grantor's decision and credits it to the requester, so
        no reply is ever in flight and a deferral queue would have nothing to
        remember.  The interval in which a reply has been sent but not yet
-       received is not expressible.
+       received is not expressible.  RicartAgrawalaNet refines this
+       machine with replies in flight, discharging the two limitations
+       below: the stale-request situation becomes a theorem
+       (replyInFlightFresh), and the grantor-local guard a proved
+       equivalence (grantorAgreesWithRequester).
      - As a consequence, a request's timestamp as carried by a message is
        identified with the requester's current last_req.  In a channel model
        these diverge: a request from an earlier round may be delivered after
