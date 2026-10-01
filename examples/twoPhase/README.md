@@ -20,3 +20,11 @@ graph TD
 
     twoPhase --> alternate
 ```
+
+## Limitations
+
+- The abstract spec is parameterized by uninterpreted predicates
+  (`xInit`, `xAct`): it proves the alternation structure of the
+  protocol, not any property of the actions themselves
+- No invariant beyond the alternation property; no liveness or
+  fairness

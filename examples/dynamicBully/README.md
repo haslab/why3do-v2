@@ -28,3 +28,17 @@ graph TD
     leMax --> le
     bully --> leMax
 ```
+
+## Limitations
+
+- The concrete machine assumes a perfect failure detector
+  (`fd_accurate`: it never suspects a live process) -- an assumption no
+  asynchronous protocol can derive, and Bully's safety depends on it;
+  it is confined to one guard and one invariant conjunct
+- Recovery deposes an outranked incumbent atomically, in place of the
+  Coordinator round that would inform the old leader; this is a
+  synchrony assumption ("always at most one leader" is not an
+  asynchronous safety property of Bully), inherited by the whole chain
+- The max-alive machine's election guard quantifies over the whole
+  alive set: a specification of which process must be chosen, not a
+  check a process could evaluate locally

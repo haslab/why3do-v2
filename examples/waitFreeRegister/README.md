@@ -21,3 +21,12 @@ graph TD
 
     four --> slots
 ```
+
+## Limitations
+
+- Simpson's algorithm as modelled is the single-writer,
+  single-reader case: two processes (Writer / Reader)
+- The 4 control registers are atomic; only the 4 data slots are the
+  non-atomic part
+- Only data-race freedom is proved: the abstract spec tracks control
+  states only, and nothing is claimed about the values read or written

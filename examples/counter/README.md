@@ -34,3 +34,12 @@ graph TD
     counter_lock --> counter
     counter_lock_alt --> counter_alt
 ```
+
+## Limitations
+
+- The abstract specs assume atomic updates; replacing that assumption
+  with lock discipline is precisely what the lock-based implementations
+  do
+- The alt specs fix a finite number of threads (`n_threads > 0`)
+- Safety only: the result is the final value of the counter, with no
+  progress or fairness property

@@ -28,3 +28,17 @@ graph TD
     core --> ledger
     net --> core
 ```
+
+## Limitations
+
+- Quorums are abstract: `quorum_overlap` is an assumption, not the
+  pigeonhole principle, and nothing relates quorums to majorities;
+  the axiom is also what forces quorums non-empty
+- `grantVote`'s guard is the voter's local check: it does not require
+  the requester to have reached that term, nor to currently be a
+  Candidate -- facts about the requester that a voter cannot observe
+- The network layer models delay, duplication and reordering with
+  monotone sent-sets, but no bounded loss and no garbage collection;
+  `n_nodes` is fixed and nodes never crash or restart
+- Safety only: no liveness, fairness or timing model, and the ledger's
+  terms are unbounded so nothing says elections are finite in number

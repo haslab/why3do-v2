@@ -42,3 +42,15 @@ graph TD
     petersonFilter --> mutexN
     bakery --> mutexN
 ```
+
+## Limitations
+
+- Shared-variable algorithms with atomic reads and writes; BakeryAtomic
+  is explicitly a simplified Bakery that assumes them (the real
+  algorithm's bounded ticket overflow is out of scope), and fixes the
+  number of processes to the range 0..999
+- The abstract spec's `Done` state makes the lifecycle one-shot;
+  re-entry is modelled by an explicit `reset` action, not by the
+  algorithms
+- Safety only: mutual exclusion, with no deadlock-freedom or
+  starvation-freedom anywhere in the chain (simpleMutex can deadlock)

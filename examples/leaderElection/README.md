@@ -45,3 +45,13 @@ graph TD
     crNet --> leMax
     broadcast --> leMax
 ```
+
+## Limitations
+
+- Safety only: at most one leader is guaranteed; nothing states that a
+  leader is ever elected, so there is no liveness, fairness or
+  timing model
+- The Chang-Roberts models use idealized message passing: nodes write
+  directly to their neighbours' queues, and messages are not lost,
+  duplicated, or reordered
+- The abstract spec assumes at least three nodes (`3 <= n_nodes`)

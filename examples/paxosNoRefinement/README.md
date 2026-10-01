@@ -12,3 +12,11 @@ single monolithic module.
 
 See also [paxos/](../paxos/) for the refinement-based version of the
 same algorithm.
+
+## Limitations
+
+- Same modelling assumptions as the refinement-based development:
+  quorum intersection is an axiom, ballots are unbounded, and only
+  safety is proved
+- The monolithic proof is harder to survey than the refinement chain,
+  which is why [paxos/](../paxos/) supersedes it

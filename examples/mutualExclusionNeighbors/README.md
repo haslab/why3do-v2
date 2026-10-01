@@ -35,3 +35,18 @@ graph TD
     ring --> tokenMutex
     biarray --> tokenMutex
 ```
+
+## Limitations
+
+- Only the closure (stable) phase is modelled: starting from a stable
+  one-token configuration, the machines preserve the token. The
+  convergence half of self-stabilization -- reaching such a
+  configuration from an arbitrary one -- is not addressed
+- The bidirectional array proof covers 2-value configurations only;
+  one-token configurations with three or more distinct values, which
+  occur in the final steps of convergence, are out of scope
+- Token movement is a single atomic step (refining tokenMutex's
+  `transfer`), matching the shared-neighbour-state model rather than a
+  message-passing one
+- Safety only: no fairness, and no bound on how long a token holder
+  waits before passing it on

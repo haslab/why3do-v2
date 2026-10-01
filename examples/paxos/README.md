@@ -43,3 +43,13 @@ graph TD
 3. The module in `consensus_orig.mlw` contains the original set-based
    formulation, with a proof that `consensus.mlw` is a refinement of it
    (and vice versa).
+
+## Limitations
+
+- Quorums are abstract: `quorum_intersect` (any two quorums share an
+  acceptor) is an axiom, not a pigeonhole consequence of majorities,
+  and nothing relates quorums to a number of acceptors
+- Ballots are unbounded integers, so nothing here says elections are
+  finite in number
+- Safety only: agreement and validity, with no progress, no leader or
+  dissenter roles, and no failure model
