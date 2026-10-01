@@ -13,23 +13,36 @@
       "Refinement.initWorldA'refn": { "prover": "cvc5@1.0.3", "time": 0.021 },
       "Refinement.initWorldC'refn": { "prover": "cvc5@1.0.3", "time": 0.009 },
       "Refinement.stepA'refn": { "prover": "cvc5@1.0.3", "time": 0.022 },
-      "Refinement.stepC'refn": { "prover": "cvc5@1.0.3", "time": 0.009 },
+      "Refinement.stepC'refn": { "prover": "cvc5@1.0.3", "time": 0.07 },
       "correctness": { "prover": "cvc5@1.0.3", "time": 0.02 },
       "correctness_by_refinement": { "prover": "cvc5@1.0.3", "time": 0.011 },
       "count_passed_level": { "prover": "cvc5@1.0.3", "time": 0.015 },
       "count_passed_level_pair": { "prover": "cvc5@1.0.3", "time": 0.021 },
+      "entering_cs_abstract_guard": { "prover": "cvc5@1.2.1", "time": 0.025 },
+      "entering_cs_no_other_cs": { "prover": "cvc5@1.2.1", "time": 0.018 },
       "initWorld": { "prover": "cvc5@1.0.3", "time": 0.012 },
       "initWorldC": { "prover": "cvc5@1.0.3", "time": 0.023 },
       "inv_implies_atMostOneCS": { "prover": "cvc5@1.0.3", "time": 0.022 },
       "last_level_valid": { "prover": "cvc5@1.0.3", "time": 0.007 },
       "refn": { "prover": "cvc5@1.0.3", "time": 0.009 },
-      "stepC": { "prover": "cvc5@1.0.3", "time": 0.026 },
-      "step_Five": { "prover": "cvc5@1.0.3", "time": 0.006 },
-      "step_Four": { "prover": "cvc5@1.0.3", "time": 0.006 },
-      "step_Three_CS": { "prover": "cvc5@1.0.3", "time": 0.006 },
-      "step_Three_Next": { "prover": "cvc5@1.0.3", "time": 0.007 },
-      "step_Zero": { "prover": "cvc5@1.0.3", "time": 0.007 },
-      "two_cs_impossible": { "prover": "cvc5@1.0.3", "time": 0.167 }
+      "step_Five": { "prover": "cvc5@1.0.3", "time": 0.169 },
+      "step_Four": {
+        "tactic": "split_vc",
+        "children": [
+          {
+            "tactic": "split_vc",
+            "children": [
+              { "prover": "cvc5@1.2.1", "time": 0.014 },
+              { "prover": "cvc5@1.2.1", "time": 0.118 },
+              { "prover": "cvc5@1.2.1", "time": 0.015 }
+            ]
+          }
+        ]
+      },
+      "step_Three_CS": { "prover": "cvc5@1.0.3", "time": 0.081 },
+      "step_Three_Next": { "prover": "cvc5@1.0.3", "time": 2.2 },
+      "step_Zero": { "prover": "cvc5@1.0.3", "time": 0.091 },
+      "two_cs_impossible": { "prover": "cvc5@1.0.3", "time": 0.026 }
     }
   }
 }

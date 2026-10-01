@@ -11,6 +11,12 @@
      Trying -> Init
      CS     -> CS
      Exit   -> Done
+     An out-of-range integer is not a process of the abstract spec;
+     it maps to Init.
+
+   The concrete transition relation given to the Refinement theory
+   is the machine's own step relation: every step of the filter
+   simulates an abstract step (or stutters), proved per action.
  *)
 
 module PetersonFilter
@@ -163,6 +169,52 @@ module PetersonFilter
           w.fpc[p] = Exit ->
           w.flvl[p] = n_processes - 1)
 
+  (* Two valid processes cannot both be in the CS: both have passed
+     the last level, and filter_bound caps that count at one. *)
+  let lemma two_cs_impossible
+      (w:world) (p q:process)
+    requires { inv w }
+    requires { valid_process p }
+    requires { valid_process q }
+    requires { w.fpc[p] = CS }
+    requires { w.fpc[q] = CS }
+    ensures  { p = q }
+  =
+    assert { w.flvl[p] = n_processes - 1 };
+    assert { w.flvl[q] = n_processes - 1 };
+
+    assert { passed_level w p (n_processes - 1) };
+    assert { passed_level w q (n_processes - 1) };
+
+    assert {
+      count_passed_level w (n_processes - 1) n_processes <= 1
+    };
+
+    count_passed_level_pair w (n_processes - 1) p q n_processes
+
+  (* State mapping: filter states -> abstract states
+     Idle   -> Init
+     Trying -> Init
+     CS     -> CS
+     Exit   -> Done
+     An out-of-range integer is not a process of the abstract spec;
+     it maps to Init.
+   *)
+  function mapSt (st:state) : MutexAbstractN.state =
+    match st with
+    | Idle   -> MutexAbstractN.Init
+    | Trying -> MutexAbstractN.Init
+    | CS     -> MutexAbstractN.CS
+    | Exit   -> MutexAbstractN.Done
+    end
+
+  (* The map is guarded by validity: out-of-range integers have no
+     state in the abstract view. *)
+  let ghost function refn (w:world) : MutexAbstractN.world =
+    { pc_n = fun p ->
+        if valid_process p then mapSt (w.fpc[p])
+        else MutexAbstractN.Init }
+
   let ghost function enter_first_level (w:world) (p:process) : world =
     ({
       fpc     = set w.fpc p Trying;
@@ -198,6 +250,37 @@ module PetersonFilter
       fvictim = w.fvictim;
     } : world)
 
+  (* If p is about to enter the CS, no other process is already in
+     it: in the post-state p would be in the CS together with q,
+     which two_cs_impossible excludes. *)
+  let lemma entering_cs_no_other_cs (w:world) (p q:process)
+    requires { inv w }
+    requires { inv (enter_cs w p) }
+    requires { valid_process p }
+    requires { valid_process q }
+    requires { q <> p }
+    requires { w.fpc[q] = CS }
+    ensures  { false }
+  =
+    assert { (enter_cs w p).fpc[p] = CS };
+    assert { (enter_cs w p).fpc[q] = CS };
+    two_cs_impossible (enter_cs w p) p q
+
+  (* Hence the abstract view of the pre-state satisfies the abstract
+     machine's entry guard: nobody at all is in the CS.  An
+     out-of-range integer never maps to CS, and no valid process
+     is in the CS. *)
+  let lemma entering_cs_abstract_guard (w:world) (p:process)
+    requires { inv w }
+    requires { inv (enter_cs w p) }
+    requires { valid_process p }
+    requires { w.fpc[p] = Trying }
+    ensures  { MutexAbstractN.i_enbld (refn w) p }
+  =
+    assert { forall q:process.
+      valid_process q -> w.fpc[q] <> CS };
+    ()
+
   predicate initWorld_p (w:world) =
        w.fpc = const Idle
     /\ w.flvl = const 0
@@ -215,6 +298,9 @@ module PetersonFilter
 
   let ghost function step_Zero (w:world) (p:process) : world
     requires { step_Zero_enbld w p }
+    ensures  { inv w ->
+      refn result = refn w \/
+      MutexAbstractN.step (refn w) (refn result) }
   =
     enter_first_level w p
 
@@ -228,6 +314,9 @@ module PetersonFilter
 
   let ghost function step_Three_Next (w:world) (p:process) : world
     requires { step_Three_Next_enbld w p }
+    ensures  { inv w ->
+      refn result = refn w \/
+      MutexAbstractN.step (refn w) (refn result) }
   =
     enter_next_level w p
 
@@ -240,6 +329,11 @@ module PetersonFilter
 
   let ghost function step_Three_CS (w:world) (p:process) : world
     requires { step_Three_CS_enbld w p }
+    ensures  { inv w ->
+      (refn result = refn w \/
+       MutexAbstractN.step (refn w) (refn result))
+      by (refn result = MutexAbstractN.i (refn w) p)
+      by MutexAbstractN.i_enbld (refn w) p }
   =
     enter_cs w p
 
@@ -250,6 +344,11 @@ module PetersonFilter
 
   let ghost function step_Four (w:world) (p:process) : world
     requires { step_Four_enbld w p }
+    ensures  { inv w ->
+      (refn result = refn w \/
+       MutexAbstractN.step (refn w) (refn result))
+      by (refn result = MutexAbstractN.cs (refn w) p)
+      by MutexAbstractN.cs_enbld (refn w) p }
   =
     leave_cs w p
 
@@ -260,6 +359,11 @@ module PetersonFilter
 
   let ghost function step_Five (w:world) (p:process) : world
     requires { step_Five_enbld w p }
+    ensures  { inv w ->
+      (refn result = refn w \/
+       MutexAbstractN.step (refn w) (refn result))
+      by (refn result = MutexAbstractN.reset (refn w) p)
+      by MutexAbstractN.reset_enbld (refn w) p }
   =
     reset_process w p
 
@@ -298,27 +402,6 @@ module PetersonFilter
     val step,
     val initWorld
 
-  let lemma two_cs_impossible
-      (w:world) (p q:process)
-    requires { inv w }
-    requires { valid_process p }
-    requires { valid_process q }
-    requires { w.fpc[p] = CS }
-    requires { w.fpc[q] = CS }
-    ensures  { p = q }
-  =
-    assert { w.flvl[p] = n_processes - 1 };
-    assert { w.flvl[q] = n_processes - 1 };
-
-    assert { passed_level w p (n_processes - 1) };
-    assert { passed_level w q (n_processes - 1) };
-
-    assert {
-      count_passed_level w (n_processes - 1) n_processes <= 1
-    };
-
-    count_passed_level_pair w (n_processes - 1) p q n_processes
-
   let lemma inv_implies_atMostOneCS (w:world)
     requires { inv w }
     ensures  { atMostOneCS w }
@@ -341,45 +424,17 @@ module PetersonFilter
   (* Refinement to MutexAbstractN                                            *)
   (**************************************************************************)
 
-  (* State mapping: filter states -> abstract states
-     Idle   -> Init
-     Trying -> Init
-     CS     -> CS
-     Exit   -> Done
-   *)
-  function mapSt (st:state) : MutexAbstractN.state =
-    match st with
-    | Idle   -> MutexAbstractN.Init
-    | Trying -> MutexAbstractN.Init
-    | CS     -> MutexAbstractN.CS
-    | Exit   -> MutexAbstractN.Done
-    end
-
-  let ghost function refn (w:world) : MutexAbstractN.world =
-    { pc_n = fun p -> mapSt (w.fpc[p]) }
+  (* The refinement map is defined before the actions, since the
+     per-action simulation obligations mention it.  The concrete
+     transition relation given to the Refinement theory is the
+     machine's own step relation; every step simulates an abstract
+     step (or stutters), proved per action. *)
 
   let ghost predicate initWorldC (w:world) : bool
     ensures { result -> inv w }
     ensures { result -> MutexAbstractN.initWorld (refn w) }
   =
     initWorld w
-
-  predicate stepC_p (w1:world) (w2:world) =
-    step w1 w2 /\
-    (
-      refn w1 = refn w2 \/
-      MutexAbstractN.step (refn w1) (refn w2)
-    )
-
-  let ghost predicate stepC (w1:world) (w2:world) : bool
-    ensures { result -> inv w1 -> inv w2 }
-    ensures {
-      result -> inv w1 ->
-        refn w1 = refn w2 \/
-        MutexAbstractN.step (refn w1) (refn w2)
-    }
-  =
-    stepC_p w1 w2
 
   clone refinement.Refinement with
     type worldA = MutexAbstractN.world,
@@ -390,7 +445,7 @@ module PetersonFilter
     val initWorldA = MutexAbstractN.initWorld,
     val initWorldC = initWorldC,
     val stepA = MutexAbstractN.step,
-    val stepC = stepC
+    val stepC = step
 
   goal correctness_by_refinement:
     forall w:world.
