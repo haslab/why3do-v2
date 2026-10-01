@@ -40,8 +40,8 @@ install_pkg RicartAgrawalaNet examples/mutualExclusionDistributed/RicartAgrawala
 install_pkg tokenMutex     examples/mutualExclusionDistributed/tokenMutex.mlw
 install_pkg suzukiKasami   examples/mutualExclusionDistributed/suzukiKasami.mlw
 
-# mutualExclusionToken
-install_pkg oneToken        examples/mutualExclusionToken/oneToken.mlw
+# mutualExclusionNeighbors
+install_pkg oneToken        examples/mutualExclusionNeighbors/oneToken.mlw
 
 # leaderElection
 install_pkg leaderElect     examples/leaderElection/leaderElect.mlw

@@ -1,11 +1,12 @@
-# Mutual Exclusion by Token-passing
+# Mutual Exclusion by Neighbor Communication
 
 Formalization, by specification refinement, of token-based mutual
-exclusion algorithms. Specifically, the closure property of Dijkstra's
-self-stabilizing systems, and — on top of it — mutual exclusion: each
-system also refines tokenMutex (in `examples/mutualExclusionDistributed`),
-which carries the argument that a unique token yields mutual exclusion
-of the critical sections.
+exclusion algorithms in which each process communicates only with its
+topological neighbors, by reading their state. Specifically, the closure
+property of Dijkstra's self-stabilizing systems, and — on top of it —
+mutual exclusion: each system also refines tokenMutex (in
+`examples/mutualExclusionDistributed`), which carries the argument that
+a unique token yields mutual exclusion of the critical sections.
 
 ## Files
 

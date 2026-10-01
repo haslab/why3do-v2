@@ -28,7 +28,7 @@
      - "At most one token", not "exactly one".  Nothing here says a token
        exists at all, so an algorithm that loses its token still refines
        this machine.  Token conservation is the refining algorithm's
-       obligation; OneToken, in mutualExclusionToken, is the spec that
+       obligation; OneToken, in mutualExclusionNeighbors, is the spec that
        requires exactly one, and it is a poor fit here precisely because
        it cannot express a token in transit.
      - acquireToken's guard quantifies over all processes.  That is a
