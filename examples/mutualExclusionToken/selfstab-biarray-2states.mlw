@@ -69,7 +69,11 @@
 
 module SelfStab_Biarray
 
-  use oneToken.OneToken       
+  use oneToken.OneToken
+  use MutexSpec.MutexSpec
+  use tokenMutex.TokenMutex
+
+  axiom nodes_are_processes : MutexSpec.n_processes = n_nodes
 
   type state = Zero | One | Two | Three
 
@@ -87,7 +91,8 @@ module SelfStab_Biarray
   lemma state_lm_2 : forall x y :state.
     x = incre(incre y) <-> y =incre(incre x)
 
-  type world = { biarray : map node state }
+  type world = { biarray : map node state;
+                 crit : map node bool }
 
 
   predicate has_token (w :world) (i:node) =
@@ -98,7 +103,12 @@ module SelfStab_Biarray
 
   let ghost function refn (w:world) : OneToken.world
     (* = { token = fun (n:node) -> has_token w n } *)
-  = { token = has_token w }
+  = { OneToken.token = has_token w }
+
+  (* TokenMutex view: the derived token and the CS flags. *)
+  let ghost function refnM (w:world) : TokenMutex.world
+    = { TokenMutex.token = has_token w;
+        TokenMutex.inCrit = w.crit }
 
 
   (* Similarly to the ring example, configurations have by definition
@@ -148,14 +158,15 @@ module SelfStab_Biarray
 
 
   predicate initWorld_p (w:world) =
-    forall n :node. validNd n -> w.biarray[n] = if n=0 then One else Two
+    (forall n :node. validNd n -> w.biarray[n] = if n=0 then One else Two)
+    /\ (forall n :node. validNd n -> not w.crit[n])
   
   let ghost predicate initWorld (w:world) = initWorld_p w
 
 
 
   predicate trans_enbld (w:world) (h:node) = 
-    validNd h /\ has_token w h
+    validNd h /\ has_token w h /\ not w.crit[h]
 
 
   (* Contract characterizes how the token is passed to the 
@@ -163,7 +174,7 @@ module SelfStab_Biarray
    *)
  
   predicate passToken (w:world) (w':world) (c:node) (n:node) =
-    (refn w').token = (refn w).token[c<-false][n<-true]
+    (refn w').OneToken.token = (refn w).OneToken.token[c<-false][n<-true]
     (* refn w' = OneToken.trans (refn w) c n *)
 
 
@@ -175,11 +186,43 @@ module SelfStab_Biarray
     ensures  { inv w -> h=n_nodes-1 \/ (0<h<n_nodes-1 /\ incre (w.biarray[h]) = w.biarray[h+1])
                      -> passToken w result h (h-1) }
     ensures  { inv w -> refn result = refn w \/ OneToken.stepind (refn w) (refn result) }
+    ensures  { h=0 \/ (0<h<n_nodes-1 /\ incre (w.biarray[h]) = w.biarray[h-1]) ->
+      TokenMutex.transfer_enbld (refnM w) h (h+1) /\
+      (inv w -> refnM result = TokenMutex.transfer (refnM w) h (h+1)) }
+    ensures  { h=n_nodes-1 \/ (0<h<n_nodes-1 /\ incre (w.biarray[h]) = w.biarray[h+1]) ->
+      TokenMutex.transfer_enbld (refnM w) h (h-1) /\
+      (inv w -> refnM result = TokenMutex.transfer (refnM w) h (h-1)) }
+    ensures  { inv w -> refnM result = refnM w \/
+      TokenMutex.stepind (refnM w) (refnM result) }
   = let st = if h = 0 then incre(incre (w.biarray[h]))
              else if h = n_nodes-1 then incre(incre (w.biarray[h]))
                   else incre (w.biarray[h])
     in
-    { biarray = w.biarray[h<-st] }
+    { biarray = w.biarray[h<-st]; crit = w.crit }
+
+  (* The token holder enters its CS.  The TokenMutex view takes the
+     abstract enter step; the OneToken view stutters. *)
+  predicate enter_cs_enbld (w:world) (h:node) =
+    validNd h /\ has_token w h /\ not w.crit[h]
+
+  let ghost function enter_cs (w:world) (h:node) : world
+    requires { enter_cs_enbld w h }
+    ensures  { inv w -> inv result }
+    ensures  { refn result = refn w }
+    ensures  { TokenMutex.enter_enbld (refnM w) h }
+    ensures  { refnM result = TokenMutex.enter (refnM w) h }
+  = { w with crit = w.crit[h <- true] }
+
+  predicate leave_cs_enbld (w:world) (h:node) =
+    validNd h /\ w.crit[h]
+
+  let ghost function leave_cs (w:world) (h:node) : world
+    requires { leave_cs_enbld w h }
+    ensures  { inv w -> inv result }
+    ensures  { refn result = refn w }
+    ensures  { TokenMutex.leave_enbld (refnM w) h }
+    ensures  { refnM result = TokenMutex.leave (refnM w) h }
+  = { w with crit = w.crit[h <- false] }
 
 
 
@@ -187,6 +230,10 @@ module SelfStab_Biarray
   inductive stepind world world =
   | trans : forall w :world, h :node.
       trans_enbld w h -> stepind w (trans w h )
+  | enter_cs : forall w :world, h :node.
+      enter_cs_enbld w h -> stepind w (enter_cs w h)
+  | leave_cs : forall w :world, h :node.
+      leave_cs_enbld w h -> stepind w (leave_cs w h)
 
   let ghost predicate step (w1:world) (w2:world) = stepind w1 w2 
 
@@ -198,11 +245,27 @@ module SelfStab_Biarray
     val initWorldC=initWorld, val initWorldA=OneToken.initWorld,
     val stepC=step, val stepA=OneToken.step
 
+  (* The same machine also refines TokenMutex, whose invariant turns
+     the unique token into mutual exclusion of the critical
+     sections. *)
+  clone refinement.Refinement as RefTM with
+    type worldC=world, type worldA=TokenMutex.world, val refn=refnM,
+    predicate invC=inv, predicate invA=TokenMutex.inv,
+    val initWorldC=initWorld, val initWorldA=TokenMutex.initWorld,
+    val stepC=step, val stepA=TokenMutex.step
 
 
   (* Safety Property
    *)
   goal oneToken : forall w :world. reachableC w -> oneToken (refn w)
+
+  goal mutualExclusion :
+    forall w: world, p q: node. RefTM.reachableC w ->
+      validNd p -> validNd q -> w.crit[p] -> w.crit[q] -> p = q
+
+  goal critImpliesToken :
+    forall w: world, p: node. RefTM.reachableC w ->
+      validNd p -> w.crit[p] -> has_token w p
 
 
 

@@ -2,25 +2,52 @@
   "profile": [],
   "proofs": {
     "SelfStab_Biarray": {
-      "Refinement.initWorldA'refn": { "prover": "cvc5@1.0.3", "time": 0.018 },
+      "RefTM.initWorldA'refn": { "prover": "cvc5@1.2.1", "time": 0.101 },
+      "RefTM.initWorldC'refn": { "prover": "alt-ergo@2.6.4", "time": 0.043 },
+      "RefTM.stepA'refn": { "prover": "alt-ergo@2.6.4", "time": 0.018 },
+      "RefTM.stepC'refn": { "prover": "alt-ergo@2.6.4", "time": 0.049 },
+      "Refinement.initWorldA'refn": { "prover": "cvc5@1.0.3", "time": 0.057 },
       "Refinement.initWorldC'refn": {
         "prover": "alt-ergo@2.4.2",
-        "time": 0.096
+        "time": 0.629
       },
-      "Refinement.stepA'refn": { "prover": "cvc5@1.0.3", "time": 0.021 },
-      "Refinement.stepC'refn": { "prover": "alt-ergo@2.4.2", "time": 0.008 },
-      "atLeastOneToken_lm": { "prover": "cvc5@1.0.3", "time": 0.029 },
-      "noTokens_fl": { "prover": "cvc5@1.0.3", "time": 0.033 },
-      "oneToken": { "prover": "cvc5@1.0.3", "time": 0.049 },
-      "state_lm": { "prover": "cvc5@1.0.3", "time": 0.008 },
-      "state_lm_2": { "prover": "cvc5@1.0.3", "time": 0.011 },
+      "Refinement.stepA'refn": { "prover": "cvc5@1.0.3", "time": 0.065 },
+      "Refinement.stepC'refn": { "prover": "alt-ergo@2.4.2", "time": 0.024 },
+      "atLeastOneToken_lm": { "prover": "cvc5@1.0.3", "time": 0.254 },
+      "critImpliesToken": { "prover": "alt-ergo@2.6.4", "time": 0.018 },
+      "enter_cs": {
+        "tactic": "split_vc",
+        "children": [
+          { "prover": "cvc5@1.2.1", "time": 0.016 },
+          { "prover": "cvc5@1.2.1", "time": 0.065 },
+          { "prover": "cvc5@1.2.1", "time": 0.06 },
+          { "prover": "cvc5@1.2.1", "time": 0.069 }
+        ]
+      },
+      "leave_cs": {
+        "tactic": "split_vc",
+        "children": [
+          { "prover": "cvc5@1.2.1", "time": 0.012 },
+          { "prover": "cvc5@1.2.1", "time": 0.043 },
+          { "prover": "cvc5@1.2.1", "time": 0.018 },
+          { "prover": "cvc5@1.2.1", "time": 0.044 }
+        ]
+      },
+      "mutualExclusion": { "prover": "alt-ergo@2.6.4", "time": 0.015 },
+      "noTokens_fl": { "prover": "cvc5@1.0.3", "time": 0.648 },
+      "oneToken": { "prover": "cvc5@1.0.3", "time": 0.152 },
+      "state_lm": { "prover": "cvc5@1.0.3", "time": 0.033 },
+      "state_lm_2": { "prover": "cvc5@1.0.3", "time": 0.035 },
       "trans": {
         "tactic": "split_vc",
         "children": [
-          { "prover": "z3@5.1.0", "time": 0.415 },
-          { "prover": "z3@5.1.0", "time": 5.6 },
-          { "prover": "cvc5@1.0.3", "time": 3.1 },
-          { "prover": "cvc5@1.0.3", "time": 0.083 }
+          { "prover": "z3@5.1.0", "time": 0.892 },
+          { "prover": "z3@5.1.0", "time": 0.496 },
+          { "prover": "z3@5.1.0", "time": 0.58 },
+          { "prover": "cvc5@1.0.3", "time": 0.355 },
+          { "prover": "cvc5@1.2.1", "time": 0.081 },
+          { "prover": "cvc5@1.2.1", "time": 0.076 },
+          { "prover": "cvc5@1.2.1", "time": 0.103 }
         ]
       }
     }

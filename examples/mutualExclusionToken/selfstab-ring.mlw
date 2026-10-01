@@ -1,9 +1,21 @@
 
-
+(* Dijkstra's self-stabilizing ring (stable phase).  Refines OneToken
+   for the one-token closure property, and TokenMutex for mutual
+   exclusion: each process has a critical-section flag, enter is
+   guarded by holding the (derived) token, and the token cannot move
+   while its holder is in the CS -- mirroring TokenMutex's transfer
+   guard.  TokenMutex then turns the unique token into mutual
+   exclusion of the critical sections, which is the point of
+   Dijkstra's algorithm. *)
 
 module SelfStab_Ring
 
-  use oneToken.OneToken       
+  use oneToken.OneToken
+  use int.EuclideanDivision
+  use MutexSpec.MutexSpec
+  use tokenMutex.TokenMutex
+
+  axiom nodes_are_processes : MutexSpec.n_processes = n_nodes
 
   use int.EuclideanDivision
 
@@ -18,7 +30,8 @@ module SelfStab_Ring
   = mod (x+1) k_states
 
 
-  type world = { ring : map node state }
+  type world = { ring : map node state;
+                 crit : map node bool }
 
 
    predicate has_token (w:world) (i:node) =
@@ -28,7 +41,12 @@ module SelfStab_Ring
 
   let ghost function refn (w:world) : OneToken.world
     (* = { token = fun (n:node) -> has_token w n } *)
-  = { token = has_token w }
+  = { OneToken.token = has_token w }
+
+  (* TokenMutex view: the derived token and the CS flags. *)
+  let ghost function refnM (w:world) : TokenMutex.world
+    = { TokenMutex.token = has_token w;
+        TokenMutex.inCrit = w.crit }
 
 
 
@@ -61,7 +79,8 @@ module SelfStab_Ring
 
 
   predicate initWorld_p (w:world) =
-    forall n :node. validNd n -> w.ring[n] = 0
+    (forall n :node. validNd n -> w.ring[n] = 0)
+    /\ (forall n :node. validNd n -> not w.crit[n])
   
   let ghost predicate initWorld (w:world) = initWorld_p w
 
@@ -73,7 +92,7 @@ module SelfStab_Ring
    *)
 
   predicate trans_enbld (w:world) (h:node) = 
-    validNd h /\ has_token w h 
+    validNd h /\ has_token w h /\ not w.crit[h]
   
   let ghost function trans (w:world) (h:node) : world
     requires { trans_enbld w h }
@@ -81,16 +100,52 @@ module SelfStab_Ring
     ensures  { inv w -> h=n_nodes-1 -> refn result = OneToken.trans (refn w) h 0 }
     ensures  { inv w -> h<n_nodes-1 -> refn result = OneToken.trans (refn w) h (h+1) }
     ensures  { inv w -> refn result = refn w \/ OneToken.stepind (refn w) (refn result) }
+    ensures  { h = n_nodes-1 ->
+      TokenMutex.transfer_enbld (refnM w) h 0 /\
+      (inv w -> refnM result = TokenMutex.transfer (refnM w) h 0) }
+    ensures  { h < n_nodes-1 ->
+      TokenMutex.transfer_enbld (refnM w) h (h+1) /\
+      (inv w -> refnM result = TokenMutex.transfer (refnM w) h (h+1)) }
+    ensures  { inv w -> refnM result = refnM w \/
+      TokenMutex.stepind (refnM w) (refnM result) }
   = let st = if h = 0 then incre (w.ring[n_nodes-1])
                       else w.ring[h-1]
     in
-    { ring = w.ring[h<-st] }
+    { ring = w.ring[h<-st]; crit = w.crit }
+
+  (* The token holder enters its CS.  The TokenMutex view takes the
+     abstract enter step; the OneToken view stutters. *)
+  predicate enter_cs_enbld (w:world) (h:node) =
+    validNd h /\ has_token w h /\ not w.crit[h]
+
+  let ghost function enter_cs (w:world) (h:node) : world
+    requires { enter_cs_enbld w h }
+    ensures  { inv w -> inv result }
+    ensures  { refn result = refn w }
+    ensures  { TokenMutex.enter_enbld (refnM w) h }
+    ensures  { refnM result = TokenMutex.enter (refnM w) h }
+  = { w with crit = w.crit[h <- true] }
+
+  predicate leave_cs_enbld (w:world) (h:node) =
+    validNd h /\ w.crit[h]
+
+  let ghost function leave_cs (w:world) (h:node) : world
+    requires { leave_cs_enbld w h }
+    ensures  { inv w -> inv result }
+    ensures  { refn result = refn w }
+    ensures  { TokenMutex.leave_enbld (refnM w) h }
+    ensures  { refnM result = TokenMutex.leave (refnM w) h }
+  = { w with crit = w.crit[h <- false] }
 
 
 
   inductive stepind world world =
   | trans : forall w :world, h :node.
       trans_enbld w h -> stepind w (trans w h )
+  | enter_cs : forall w :world, h :node.
+      enter_cs_enbld w h -> stepind w (enter_cs w h)
+  | leave_cs : forall w :world, h :node.
+      leave_cs_enbld w h -> stepind w (leave_cs w h)
 
   let ghost predicate step (w1:world) (w2:world) = stepind w1 w2 
 
@@ -102,10 +157,26 @@ module SelfStab_Ring
     val initWorldC=initWorld, val initWorldA=OneToken.initWorld,
     val stepC=step, val stepA=OneToken.step
 
+  (* The same machine also refines TokenMutex, whose invariant turns
+     the unique token into mutual exclusion of the critical
+     sections. *)
+  clone refinement.Refinement as RefTM with
+    type worldC=world, type worldA=TokenMutex.world, val refn=refnM,
+    predicate invC=inv, predicate invA=TokenMutex.inv,
+    val initWorldC=initWorld, val initWorldA=TokenMutex.initWorld,
+    val stepC=step, val stepA=TokenMutex.step
 
 
   (* Safety Property *)
   goal oneToken : forall w :world. reachableC w -> oneToken (refn w)
+
+  goal mutualExclusion :
+    forall w: world, p q: node. RefTM.reachableC w ->
+      validNd p -> validNd q -> w.crit[p] -> w.crit[q] -> p = q
+
+  goal critImpliesToken :
+    forall w: world, p: node. RefTM.reachableC w ->
+      validNd p -> w.crit[p] -> has_token w p
 
 end
 

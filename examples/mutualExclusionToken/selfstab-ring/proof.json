@@ -2,20 +2,34 @@
   "profile": [],
   "proofs": {
     "SelfStab_Ring": {
-      "Refinement.initWorldA'refn": { "prover": "cvc5@1.0.3", "time": 0.013 },
-      "Refinement.initWorldC'refn": { "prover": "cvc5@1.0.3", "time": 0.078 },
-      "Refinement.stepA'refn": { "prover": "cvc5@1.0.3", "time": 0.016 },
+      "RefTM.initWorldA'refn": { "prover": "cvc5@1.2.1", "time": 0.086 },
+      "RefTM.initWorldC'refn": { "prover": "alt-ergo@2.6.4", "time": 0.027 },
+      "RefTM.stepA'refn": { "prover": "alt-ergo@2.6.4", "time": 0.017 },
+      "RefTM.stepC'refn": { "prover": "alt-ergo@2.6.4", "time": 0.021 },
+      "Refinement.initWorldA'refn": { "prover": "cvc5@1.0.3", "time": 0.052 },
+      "Refinement.initWorldC'refn": {
+        "prover": "alt-ergo@2.6.4",
+        "time": 0.055
+      },
+      "Refinement.stepA'refn": { "prover": "cvc5@1.0.3", "time": 0.056 },
       "Refinement.stepC'refn": { "prover": "alt-ergo@2.4.2", "time": 0.007 },
-      "first_last_fl": { "prover": "cvc5@1.0.3", "time": 0.016 },
-      "incre": { "prover": "cvc5@1.0.3", "time": 0.007 },
-      "oneToken": { "prover": "cvc5@1.0.3", "time": 0.052 },
+      "critImpliesToken": { "prover": "cvc5@1.2.1", "time": 0.133 },
+      "enter_cs": { "prover": "cvc5@1.2.1", "time": 0.069 },
+      "first_last_fl": { "prover": "cvc5@1.0.3", "time": 0.055 },
+      "incre": { "prover": "cvc5@1.0.3", "time": 0.033 },
+      "leave_cs": { "prover": "cvc5@1.2.1", "time": 0.043 },
+      "mutualExclusion": { "prover": "alt-ergo@2.6.4", "time": 0.014 },
+      "oneToken": { "prover": "cvc5@1.0.3", "time": 0.15 },
       "trans": {
         "tactic": "split_vc",
         "children": [
-          { "prover": "z3@5.1.0", "time": 0.013 },
-          { "prover": "z3@5.1.0", "time": 0.029 },
-          { "prover": "z3@5.1.0", "time": 0.636 },
-          { "prover": "cvc5@1.0.3", "time": 0.086 }
+          { "prover": "z3@5.1.0", "time": 0.026 },
+          { "prover": "z3@5.1.0", "time": 0.031 },
+          { "prover": "z3@5.1.0", "time": 0.068 },
+          { "prover": "cvc5@1.0.3", "time": 0.122 },
+          { "prover": "cvc5@1.2.1", "time": 0.054 },
+          { "prover": "cvc5@1.2.1", "time": 0.051 },
+          { "prover": "cvc5@1.2.1", "time": 0.065 }
         ]
       }
     }

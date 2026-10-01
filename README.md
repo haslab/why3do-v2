@@ -13,7 +13,7 @@ for proof management.
 | [examples/twoPhase/](examples/twoPhase) | Two-phase handshake protocol, by refinement |
 | [examples/mutualExclusionConcurrent/](examples/mutualExclusionConcurrent) | Concurrent mutual exclusion (Peterson, Bakery, filter) |
 | [examples/mutualExclusionDistributed/](examples/mutualExclusionDistributed) | Distributed mutual exclusion (Lamport, Ricart-Agrawala, Suzuki-Kasami) |
-| [examples/mutualExclusionToken/](examples/mutualExclusionToken) | Dijkstra self-stabilizing ring and bidirectional array |
+| [examples/mutualExclusionToken/](examples/mutualExclusionToken) | Dijkstra self-stabilizing ring and bidirectional array, delivering mutual exclusion via tokenMutex |
 | [examples/leaderElection/](examples/leaderElection) | Chang-Roberts and Bully leader election, by refinement |
 | [examples/dynamicBully/](examples/dynamicBully) | Dynamic Bully leader election with crash/recovery |
 | [examples/waitFreeRegister/](examples/waitFreeRegister) | Simpson's 4-slot wait-free register, by refinement |
