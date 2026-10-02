@@ -102,7 +102,7 @@ module SuzukiKasamiPayload
   (* Requesting (process-local; no payload access)                     *)
   (* ---------------------------------------------------------------- *)
 
-  predicate request_enbld (w: world) (i: MutexSpec.pid) =
+  predicate request_enbld (_: world) (i: MutexSpec.pid) =
     valid_p i
 
   let ghost function request (w: world) (i: MutexSpec.pid) : world

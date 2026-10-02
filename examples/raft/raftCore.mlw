@@ -196,7 +196,7 @@ module RaftCore
 
   (* Enabled in any role: safety is ledger-based, so excluding Leader
      would buy nothing. *)
-  predicate timeout_enbld (c : core) (i : node) =
+  predicate timeout_enbld (_ : core) (i : node) =
     valid_node i
 
   let ghost function timeout (c : core) (i : node) : core

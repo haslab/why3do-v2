@@ -15,7 +15,10 @@ module SelfStab_Ring
   use MutexSpec.MutexSpec
   use tokenMutex.TokenMutex
 
-  axiom nodes_are_processes : MutexSpec.n_processes = n_nodes
+  (* The processes of MutexSpec are the nodes of the ring: the
+     two abstract counts are the same, named n here. *)
+  constant n : int
+  axiom nodes_are_processes : MutexSpec.n_processes = n /\ n = n_nodes
 
   use int.EuclideanDivision
 
