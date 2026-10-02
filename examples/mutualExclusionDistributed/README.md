@@ -15,9 +15,14 @@ exclusion algorithms using message passing.
   (a deviation from the published algorithm: instead of queuing
   requests, a process tracks that every other process has acked its
   timestamp)
-  *(Original model by: Joao Duarte, Luis Silva. Adapted to the why3do
-  refinement framework, with corrections to the clock update and reply
-  guard.)*
+  *(Original model by: Joao Duarte, Luis Silva. Adapted to the
+  why3do refinement framework, with corrections to the clock update
+  and reply guard.)*
+- [LamportNet.mlw](LamportNet.mlw): Lamport with acknowledgments in
+  flight: step_ReceiveAck is split into send_Ack and deliver_Ack.
+  Refines Lamport, turning its fused ack-grant-and-receipt step into
+  proved properties (an ack in flight always answers the requester's
+  current request)
 - [RicartAgrawala.mlw](RicartAgrawala.mlw): Ricart-Agrawala distributed
   mutex algorithm. Refines MutexSpec
   *(Original model by: Claudia Pinto, Patricia Carvalho. Adapted to the
@@ -37,12 +42,14 @@ graph TD
     spec["MutexSpec.mlw<br/>(abstract spec)"]
     token["tokenMutex.mlw<br/>(token-based spec)"]
     lamport["Lamport.mlw<br/>(Lamport's algorithm)"]
+    lamportnet["LamportNet.mlw<br/>(acks in flight)"]
     ricart["RicartAgrawala.mlw<br/>(Ricart-Agrawala)"]
     ricartnet["RicartAgrawalaNet.mlw<br/>(replies in flight)"]
     suzuki["suzukiKasami.mlw<br/>(Suzuki-Kasami)"]
 
     token --> spec
     lamport --> spec
+    lamportnet --> lamport
     ricart --> spec
     ricartnet --> ricart
     suzuki --> token
@@ -68,3 +75,8 @@ graph TD
 - Lamport.mlw has no request queues (see above); its `acks` component
   records acknowledgments per pair, standing in for the published
   algorithm's per-process queues
+- Lamport.mlw fuses the ack grant with its receipt; LamportNet
+  discharges this by putting acks on the wire -- but requests are
+  still instantaneous (Lamport has no request messages at all), the
+  requester's clock update still rides the grant, and the wire is a
+  slot, not a queue

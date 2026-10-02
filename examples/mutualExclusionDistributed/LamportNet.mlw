@@ -1,0 +1,388 @@
+(* ============================================================
+   Lamport's distributed mutual exclusion, with acknowledgments
+   in flight.
+
+   Refines Lamport (and hence MutexSpec).
+
+   The machine this one refines fuses the sending and the receipt of
+   an acknowledgment into one atomic step: step_ReceiveAck's guard
+   reads the *acking* process's state (idle, or requesting with lower
+   priority, its clock already past the request) at the moment the
+   *requester* is credited, and the ack is never in flight.  This
+   machine splits the step -- send_Ack puts a tagged ack on the wire,
+   deliver_Ack takes it off -- and the fusion's hidden assumption
+   becomes a theorem:
+
+     - An ack in flight always answers the requester's *current*
+       request (ackInFlightFresh, from pendingLive).  In a channel
+       model an ack granted against an old request could in
+       principle be delivered after its sender has re-requested, and
+       counted toward the new request; the fused machine excludes
+       that situation by construction.  Here it is excluded by
+       proof: a requester cannot re-request while any ack to its
+       current request is undelivered, because entry requires every
+       ack taken.
+
+   The state embeds a Lamport world as a field, `base`, as
+   RicartAgrawalaNet embeds Ricart_Agrawala and raftNet embeds
+   raftCore.  Its `acks` is the *joined* view -- an ack counts as
+   received as soon as it is sent -- and the refinement map is the
+   projection.  The actions Lamport already has are reused verbatim
+   on `base`; send_Ack applies the abstract step_ReceiveAck, and
+   deliver_Ack is a stutter of the abstraction.
+
+   State      base    the Lamport state: per-process status (Idle,
+                      Requesting, InCS), clocks, request timestamps,
+                      and the joined ack record
+              recv    recv[r][g] : r has taken delivery of g's ack
+                      to r's current request
+              wire    wire[g][r] : g's ack to r is in flight,
+                      tagged with the timestamp of r's request it
+                      answers; at most one slot per (granter,
+                      requester) pair
+
+   Actions    send_Request    as in Lamport; discards the taken
+                              record, as a fresh request starts
+                              collecting acks anew
+              send_Ack        g decides and stamps its ack with
+                              r's request timestamp; the abstract
+                              step_ReceiveAck applies to `base`
+                              (joined credit and r's clock update)
+              deliver_Ack     the ack reaches r, which credits it
+                              after checking the tag against its
+                              own request (a stutter of the
+                              abstraction)
+              enter_CS        r enters once every ack has been
+                              *taken* -- strictly stronger than
+                              the abstract guard, which also counts
+                              acks still on the wire
+              leave_CS        as in Lamport; the taken record is
+                              discarded with the request
+
+   Invariant  pendingLive     an ack on the wire names valid
+                              processes, answers the requester's
+                              current request, and is already
+                              credited to it in the joined record
+              wireRecvExcl    an ack is never both in flight and
+                              taken
+              ackTaken        a taken ack is one to the taker's
+                              current, still active request, and
+                              is credited in the joined record
+              csTaken         a process in its CS has taken every
+                              other process's ack
+
+   The single slot per (granter, requester) pair is no restriction on
+   reachable behaviour: the grantor cannot put a second ack for the
+   same request on the wire while the first is in flight, and once
+   it is taken the guard blocks a duplicate -- the fused machine
+   could fire its step twice on the same pair, but that is an
+   artifact of the fusion (the same ack received twice), not a
+   behaviour an implementation needs.
+
+   Limitations
+     - Requests are still instantaneous: Lamport's machine has no
+       request messages at all, and its guard condition
+       clock[g] >= request_ts[r] ("g's clock has passed r's
+       request") stands in for "g has seen the request" without any
+       mechanism that produces it.  This machine inherits that; a
+       request channel would be the next refinement layer, and it
+       would have to add the receive mechanism the fused machine
+       never had.
+     - The requester's clock update rides the grant, exactly as in
+       the fused machine: send_Ack applies step_ReceiveAck, whose
+       clock bump reads the grantor's clock at decision time.  A
+       receive-side clock update would need the ack message to carry
+       the grantor's clock and would diverge from the machine being
+       refined.
+     - The wire is a slot, not a queue: an ack may be delayed
+       without bound, but there is no duplication, loss, or
+       reordering to model, because at most one ack per pair is ever
+       in flight.
+     - deliver_Ack checks the ack's tag against the requester's own
+       request, as an implementation would.  By pendingLive the
+       check never fails on a reachable state, so it constrains
+       nothing; it is kept because it is the receiver's honest
+       guard.
+     - Safety only: deadlock-freedom and starvation-freedom remain
+       out of scope.  Clocks are unbounded integers; n_processes is
+       fixed and processes do not crash.
+   ============================================================ *)
+
+module Lamport_Net
+
+  use int.Int
+  use map.Map
+  use map.Const
+  use option.Option
+  use MutexSpec.MutexSpec
+  use Lamport.LamportDistributedMutex
+
+  type world = {
+    base : LamportDistributedMutex.world;
+    recv : map MutexSpec.pid (map MutexSpec.pid bool);
+    wire : map MutexSpec.pid (map MutexSpec.pid (option int));
+  }
+
+  (* The timestamp an ack carries; 0 for an empty slot. *)
+  function tag (o: option int) : int =
+    match o with Some t -> t | None -> 0 end
+
+  (* The refinement map is the projection. *)
+  let ghost function refn (w: world) : LamportDistributedMutex.world = w.base
+
+  (* ---------------------------------------------------------------- *)
+  (* Inductive invariant                                              *)
+  (* ---------------------------------------------------------------- *)
+
+  (* An ack on the wire answers the requester's current, outstanding
+     request, and is already credited to it in the joined record.
+     This is the conjunct that turns the fused machine's implicit
+     no-stale-ack assumption into a theorem. *)
+  predicate pendingLive (w: world) =
+    forall g r: MutexSpec.pid.
+      w.wire[g][r] <> None ->
+      valid_p g /\ valid_p r /\ g <> r /\
+      w.base.pc[r] = LamportDistributedMutex.Requesting /\
+      tag (w.wire[g][r]) = w.base.request_ts[r] /\
+      w.base.acks[r][g] = tag (w.wire[g][r])
+
+  (* An ack is never both in flight and taken. *)
+  predicate wireRecvExcl (w: world) =
+    forall g r: MutexSpec.pid.
+      w.wire[g][r] <> None -> not w.recv[r][g]
+
+  (* A taken ack is one to the taker's current, still active
+     request, and is credited in the joined record. *)
+  predicate ackTaken (w: world) =
+    forall r g: MutexSpec.pid.
+      w.recv[r][g] ->
+      valid_p r /\ valid_p g /\ r <> g /\
+      (w.base.pc[r] = LamportDistributedMutex.Requesting \/
+       w.base.pc[r] = LamportDistributedMutex.InCS) /\
+      w.base.acks[r][g] = w.base.request_ts[r]
+
+  (* A process in its CS has taken every other process's ack. *)
+  predicate csTaken (w: world) =
+    forall r g: MutexSpec.pid.
+      valid_p r /\ w.base.pc[r] = LamportDistributedMutex.InCS ->
+      valid_p g /\ g <> r -> w.recv[r][g]
+
+  predicate inv (w: world) =
+    pendingLive w /\ wireRecvExcl w /\ ackTaken w /\ csTaken w
+
+  (* ---------------------------------------------------------------- *)
+  (* Initial state                                                    *)
+  (* ---------------------------------------------------------------- *)
+
+  predicate initWorld_p (w: world) =
+    w.base = { LamportDistributedMutex.pc = const LamportDistributedMutex.Idle;
+               LamportDistributedMutex.clock = const 0;
+               LamportDistributedMutex.request_ts = const 0;
+               LamportDistributedMutex.acks = const (const 0) } /\
+    w.recv = const (const false) /\
+    w.wire = const (const None)
+
+  let ghost predicate initWorld (w: world)
+    ensures { result -> inv w }
+    ensures { result -> LamportDistributedMutex.initWorld (refn w) }
+  = initWorld_p w
+
+  (* ---------------------------------------------------------------- *)
+  (* Actions                                                          *)
+  (* ---------------------------------------------------------------- *)
+
+  (* r issues a request, stamped one above its own clock, and
+     discards whatever it had taken for a previous request.  The
+     abstract action applies unchanged. *)
+  predicate send_Request_enbld (w: world) (r: MutexSpec.pid) =
+    valid_p r /\ w.base.pc[r] = LamportDistributedMutex.Idle
+
+  let ghost function send_Request (w: world) (r: MutexSpec.pid) : world
+    requires { send_Request_enbld w r }
+    ensures  { inv w -> inv result }
+    ensures  { LamportDistributedMutex.step_Request_enbld (refn w) r }
+    ensures  { refn result = LamportDistributedMutex.step_Request (refn w) r }
+  = { w with base = LamportDistributedMutex.step_Request w.base r;
+            recv = w.recv[r <- const false] }
+
+  (* g decides to ack r's pending request: the abstract decision,
+     plus the tagged ack on the wire.  The abstract step applies to
+     `base` -- the joined credit and r's clock update happen here,
+     at decision time, exactly as in the fused machine. *)
+  predicate send_Ack_enbld (w: world) (g r: MutexSpec.pid) =
+    LamportDistributedMutex.step_ReceiveAck_enbld w.base r g /\
+    w.wire[g][r] = None /\
+    not w.recv[r][g]
+
+  let ghost function send_Ack (w: world) (g r: MutexSpec.pid) : world
+    requires { send_Ack_enbld w g r }
+    ensures  { inv w -> inv result }
+    ensures  { LamportDistributedMutex.step_ReceiveAck_enbld (refn w) r g }
+    ensures  { refn result =
+               LamportDistributedMutex.step_ReceiveAck (refn w) r g }
+    ensures  { result.wire[g][r] = Some w.base.request_ts[r] }
+  =
+    let t = w.base.request_ts[r] in
+    { w with
+      base = LamportDistributedMutex.step_ReceiveAck w.base r g;
+      wire = w.wire[g <- w.wire[g][r <- Some t]] }
+
+  (* g's ack reaches r.  r checks the tag against its own request
+     and takes the ack.  The abstraction already credited this ack
+     when it was sent, so this is a stutter. *)
+  predicate deliver_Ack_enbld (w: world) (g r: MutexSpec.pid) =
+    valid_p g /\ valid_p r /\ g <> r /\
+    w.wire[g][r] <> None /\
+    tag (w.wire[g][r]) = w.base.request_ts[r]
+
+  let ghost function deliver_Ack (w: world) (g r: MutexSpec.pid) : world
+    requires { deliver_Ack_enbld w g r }
+    ensures  { inv w -> inv result }
+    ensures  { refn result = refn w }
+    ensures  { result.recv[r][g] /\ result.wire[g][r] = None }
+  =
+    { w with
+      recv = w.recv[r <- w.recv[r][g <- true]];
+      wire = w.wire[g <- w.wire[g][r <- None]] }
+
+  (* r enters the CS once it has *taken delivery of* every other
+     process's ack -- stronger than the abstract guard, which also
+     counts acks still on the wire. *)
+  predicate enter_CS_enbld (w: world) (r: MutexSpec.pid) =
+    LamportDistributedMutex.step_EnterCS_enbld w.base r /\
+    (forall g: MutexSpec.pid. valid_p g /\ g <> r -> w.recv[r][g])
+
+  let ghost function enter_CS (w: world) (r: MutexSpec.pid) : world
+    requires { enter_CS_enbld w r }
+    ensures  { inv w -> inv result }
+    ensures  { LamportDistributedMutex.step_EnterCS_enbld (refn w) r }
+    ensures  { refn result = LamportDistributedMutex.step_EnterCS (refn w) r }
+  = { w with base = LamportDistributedMutex.step_EnterCS w.base r }
+
+  (* r leaves the CS, discarding the acks it took and its request. *)
+  predicate leave_CS_enbld (w: world) (r: MutexSpec.pid) =
+    valid_p r /\ w.base.pc[r] = LamportDistributedMutex.InCS
+
+  let ghost function leave_CS (w: world) (r: MutexSpec.pid) : world
+    requires { leave_CS_enbld w r }
+    ensures  { inv w -> inv result }
+    ensures  { LamportDistributedMutex.step_Release_enbld (refn w) r }
+    ensures  { refn result = LamportDistributedMutex.step_Release (refn w) r }
+  = { w with base = LamportDistributedMutex.step_Release w.base r;
+            recv = w.recv[r <- const false] }
+
+  (* ---------------------------------------------------------------- *)
+  (* Transition relation                                              *)
+  (* ---------------------------------------------------------------- *)
+
+  inductive stepind world world =
+  | step_send_request : forall w: world, r: MutexSpec.pid.
+      send_Request_enbld w r -> stepind w (send_Request w r)
+  | step_send_ack : forall w: world, g r: MutexSpec.pid.
+      send_Ack_enbld w g r -> stepind w (send_Ack w g r)
+  | step_deliver_ack : forall w: world, g r: MutexSpec.pid.
+      deliver_Ack_enbld w g r -> stepind w (deliver_Ack w g r)
+  | step_enter_cs : forall w: world, r: MutexSpec.pid.
+      enter_CS_enbld w r -> stepind w (enter_CS w r)
+  | step_leave_cs : forall w: world, r: MutexSpec.pid.
+      leave_CS_enbld w r -> stepind w (leave_CS w r)
+
+  let ghost predicate step (w1: world) (w2: world) = stepind w1 w2
+
+  clone export refinement.Refinement with
+    type worldC = world, type worldA = LamportDistributedMutex.world,
+    val refn = refn,
+    predicate invC = inv, predicate invA = LamportDistributedMutex.inv,
+    val initWorldC = initWorld,
+    val initWorldA = LamportDistributedMutex.initWorld,
+    val stepC = step, val stepA = LamportDistributedMutex.step
+
+  (* ---------------------------------------------------------------- *)
+  (* Safety properties                                                *)
+  (* ---------------------------------------------------------------- *)
+
+  goal mutualExclusion :
+    forall w: world, p q: MutexSpec.pid. reachableC w ->
+    valid_p p -> valid_p q ->
+    w.base.pc[p] = LamportDistributedMutex.InCS ->
+    w.base.pc[q] = LamportDistributedMutex.InCS -> p = q
+
+  goal mutualExclusion_by_refinement :
+    forall w: world. reachableC w -> LamportDistributedMutex.inv (refn w)
+
+  (* The fused machine's stale-ack assumption, discharged: an ack in
+     flight answers the requester's current request and is credited
+     to it. *)
+  goal ackInFlightFresh :
+    forall w: world, g r: MutexSpec.pid, t: int.
+      reachableC w -> w.wire[g][r] = Some t ->
+      valid_p g /\ valid_p r /\ g <> r /\
+      w.base.pc[r] = LamportDistributedMutex.Requesting /\
+      t = w.base.request_ts[r] /\
+      w.base.acks[r][g] = t
+
+  (* A process in the CS has taken every ack, and no ack to it is
+     still on the wire. *)
+  goal acksTakenBeforeCS :
+    forall w: world, r g: MutexSpec.pid. reachableC w ->
+    valid_p r -> valid_p g -> r <> g ->
+    w.base.pc[r] = LamportDistributedMutex.InCS ->
+    w.recv[r][g] /\ w.wire[g][r] = None
+
+  (* A taken ack is credited in the joined record -- so the abstract
+     guard's ack conjunct adds nothing to the net guard's taken
+     conjunct on reachable states. *)
+  goal takenAcksAreCredited :
+    forall w: world, r g: MutexSpec.pid. reachableC w ->
+    valid_p r -> valid_p g -> r <> g ->
+    w.recv[r][g] -> w.base.acks[r][g] = w.base.request_ts[r]
+
+  (* The abstract conjunct of enter's guard restricts no reachable
+     behaviour: taken acks give the joined record, and the priority
+     condition is the algorithm's own. *)
+  goal enterGuardIsNotRestrictive :
+    forall w: world, r: MutexSpec.pid. reachableC w ->
+    valid_p r -> w.base.pc[r] = LamportDistributedMutex.Requesting ->
+    (forall q: MutexSpec.pid.
+       valid_p q /\ q <> r /\ w.base.request_ts[q] > 0 ->
+       w.base.request_ts[r] < w.base.request_ts[q] \/
+       (w.base.request_ts[r] = w.base.request_ts[q] /\ r < q)) ->
+    (forall g: MutexSpec.pid. valid_p g /\ g <> r -> w.recv[r][g]) ->
+    LamportDistributedMutex.step_EnterCS_enbld (refn w) r
+
+  (* Non-vacuity witness: with two processes, both request (the
+     clock condition needs g's own clock past r's timestamp), one
+     acks, the ack is delivered, and entry happens. *)
+  let lemma initialStateMakesProgress ()
+    requires { MutexSpec.n_processes = 2 }
+    ensures  { exists w0 w1 w2 w3 w4 w5: world.
+      initWorld w0 /\
+      step w0 w1 /\ step w1 w2 /\ step w2 w3 /\
+      step w3 w4 /\ step w4 w5 /\
+      w5.base.pc[0] = LamportDistributedMutex.InCS }
+  =
+    let w0 = { base = { LamportDistributedMutex.pc =
+                          const LamportDistributedMutex.Idle;
+                        LamportDistributedMutex.clock = const 0;
+                        LamportDistributedMutex.request_ts = const 0;
+                        LamportDistributedMutex.acks = const (const 0) };
+                recv = const (const false);
+                wire = const (const None) } in
+    assert { initWorld w0 };
+    assert { send_Request_enbld w0 0 };
+    let w1 = send_Request w0 0 in
+    assert { stepind w0 w1 };
+    assert { send_Request_enbld w1 1 };
+    let w2 = send_Request w1 1 in
+    assert { stepind w1 w2 };
+    assert { send_Ack_enbld w2 1 0 };
+    let w3 = send_Ack w2 1 0 in
+    assert { stepind w2 w3 };
+    assert { deliver_Ack_enbld w3 1 0 };
+    let w4 = deliver_Ack w3 1 0 in
+    assert { stepind w3 w4 };
+    assert { enter_CS_enbld w4 0 };
+    let w5 = enter_CS w4 0 in
+    assert { stepind w4 w5 }
+
+end

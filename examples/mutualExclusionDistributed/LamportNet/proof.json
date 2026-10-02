@@ -1,0 +1,27 @@
+{
+  "profile": [],
+  "proofs": {
+    "Lamport_Net": {
+      "ackInFlightFresh": { "prover": "cvc5@1.2.1", "time": 0.063 },
+      "acksTakenBeforeCS": { "prover": "cvc5@1.2.1", "time": 0.057 },
+      "deliver_Ack": { "prover": "cvc5@1.2.1", "time": 0.08 },
+      "enterGuardIsNotRestrictive": { "prover": "cvc5@1.2.1", "time": 0.074 },
+      "enter_CS": { "prover": "cvc5@1.2.1", "time": 0.057 },
+      "initWorld": { "prover": "cvc5@1.2.1", "time": 0.098 },
+      "initWorldA'refn": { "prover": "cvc5@1.2.1", "time": 0.022 },
+      "initWorldC'refn": { "prover": "cvc5@1.2.1", "time": 0.02 },
+      "initialStateMakesProgress": { "prover": "cvc5@1.0.3", "time": 4.8 },
+      "leave_CS": { "prover": "cvc5@1.2.1", "time": 0.062 },
+      "mutualExclusion": { "prover": "cvc5@1.2.1", "time": 0.051 },
+      "mutualExclusion_by_refinement": {
+        "prover": "cvc5@1.2.1",
+        "time": 0.008
+      },
+      "send_Ack": { "prover": "cvc5@1.2.1", "time": 0.067 },
+      "send_Request": { "prover": "cvc5@1.2.1", "time": 0.058 },
+      "stepA'refn": { "prover": "alt-ergo@2.6.4", "time": 0.015 },
+      "stepC'refn": { "prover": "alt-ergo@2.6.4", "time": 0.023 },
+      "takenAcksAreCredited": { "prover": "cvc5@1.2.1", "time": 0.048 }
+    }
+  }
+}

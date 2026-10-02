@@ -12,6 +12,7 @@
     "PetersonFilter",
     "MutexSpec",
     "Lamport",
+    "LamportNet",
     "RicartAgrawala", "RicartAgrawalaNet",
     "tokenMutex", "suzukiKasami",
     "raftLedger", "raftCore", "raftNet",
