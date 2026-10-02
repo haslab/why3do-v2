@@ -14,7 +14,7 @@
     "Lamport",
     "LamportNet",
     "RicartAgrawala", "RicartAgrawalaNet",
-    "tokenMutex", "suzukiKasami",
+    "tokenMutex", "suzukiKasami", "suzukiKasamiPayload",
     "raftLedger", "raftCore", "raftNet",
     "controlledFlooding"
   ],

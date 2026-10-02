@@ -1,0 +1,300 @@
+(* ============================================================
+   Suzuki-Kasami, with the token carrying its payload.
+
+   Refines SuzukiKasami, and hence TokenMutex and MutexSpec.
+
+   The machine this one refines models the token's ln and queue as
+   global fields.  That is sound -- there is exactly one token and
+   only its location reads or writes them -- but it is an
+   abstraction: the model does not exhibit the payload travelling,
+   and nothing in it stops a process from consulting or altering
+   another process's bookkeeping.  This machine bundles ln and
+   queue into the token's payload, where the algorithm keeps them:
+
+     - every action that touches the payload requires the token to
+       be Held: enqueue and sendToken read and write the queue as
+       the holder, exitCS updates ln as the holder
+     - recvToken, the delivery step, moves the payload without
+       touching it -- what was sent is what arrives
+     - while the token is InFlight, the only steps available are
+       its delivery and the request machinery (heard, bcast), which
+       is process-local and not part of the payload
+
+   The refinement map is the inverse of the bundling: it spreads
+   the payload back into the abstract machine's global fields.  It
+   is an isomorphism on states, so the refinement is generous, and
+   the layer proves no new theorem about reachable behaviour --
+   its contribution is locality of the data, discharged as a
+   construction rather than argued as an assumption.  The one guard
+   this machine adds beyond its abstraction, exitCS's Held
+   conjunct, restricts nothing on reachable states
+   (exitGuardIsNotRestrictive, from the abstraction's own
+   inv_crit_holds, inherited through the refinement).
+
+   The abstract machine's sequence-number goals remain true of the
+   payload: servedBoundedByRequested and queuedProcessesWantTheToken
+   are restated below, holding of the payload's own fields.
+
+   Limitations
+     - Inherited unchanged from SuzukiKasami: the queue is a set,
+       not a FIFO (starvation-freedom stays out of scope); requests
+       are a monotone broadcast record rather than a channel;
+       safety only; processes do not fail and the token is never
+       lost.
+     - The payload is a value, not a message: delivery is still one
+       step, so the layer that would split sendToken's hand-off
+       into a channel (with the payload in the message) remains
+       future work, as it does for the machine being refined.
+   ============================================================ *)
+
+module SuzukiKasamiPayload
+
+  use int.Int
+  use map.Map
+  use map.Const
+  use MutexSpec.MutexSpec
+  use tokenMutex.TokenMutex
+  use suzukiKasami.SuzukiKasami
+
+  (* What travels with the token: the served-number record and the
+     waiting queue. *)
+  type payload = {
+    pln    : map MutexSpec.pid int;
+    pqueue : map MutexSpec.pid bool;
+  }
+
+  type world = {
+    loc      : SuzukiKasami.tokenLoc;
+    load     : payload;
+    cs     : map MutexSpec.pid bool;
+    heard       : map MutexSpec.pid (map MutexSpec.pid int);
+    bcast : map (MutexSpec.pid, int) bool;
+  }
+
+  (* The refinement map un-bundles the payload: the abstract
+     machine's global fields are the token's payload, spread out. *)
+  let ghost function refn (w: world) : SuzukiKasami.world =
+    { SuzukiKasami.tok = w.loc;
+      SuzukiKasami.crit = w.cs;
+      SuzukiKasami.rn = w.heard;
+      SuzukiKasami.ln = w.load.pln;
+      SuzukiKasami.queue = w.load.pqueue;
+      SuzukiKasami.req_sent = w.bcast }
+
+  (* Data placement needs no invariant: the payload is the data.
+     The abstract invariant is inherited through the refinement
+     (mutualExclusion_by_refinement). *)
+  predicate inv (_: world) = true
+
+  predicate initWorld_p (w: world) =
+    w.loc = SuzukiKasami.Held 0 /\
+    w.load = { pln = const 0; pqueue = const false } /\
+    (forall p: MutexSpec.pid. valid_p p -> not w.cs[p]) /\
+    (forall i j: MutexSpec.pid. valid_p i -> valid_p j -> w.heard[i][j] = 0) /\
+    (forall j: MutexSpec.pid, sn: int. not w.bcast[(j, sn)])
+
+  let ghost predicate initWorld (w: world)
+    ensures { result -> inv w }
+    ensures { result -> SuzukiKasami.initWorld (refn w) }
+  = initWorld_p w
+
+  (* ---------------------------------------------------------------- *)
+  (* Requesting (process-local; no payload access)                     *)
+  (* ---------------------------------------------------------------- *)
+
+  predicate request_enbld (w: world) (i: MutexSpec.pid) =
+    valid_p i
+
+  let ghost function request (w: world) (i: MutexSpec.pid) : world
+    requires { request_enbld w i }
+    ensures  { result.loc = w.loc }
+    ensures  { result.load = w.load }
+    ensures  { result.cs = w.cs }
+    ensures  { SuzukiKasami.request_enbld (refn w) i }
+    ensures  { refn result = SuzukiKasami.request (refn w) i }
+  =
+    let sn = w.heard[i][i] + 1 in
+    { w with
+      heard =
+        w.heard[i <- (w.heard[i])[i <- sn]];
+      bcast =
+        w.bcast[(i, sn) <- true] }
+
+  predicate recvRequest_enbld (w: world) (i j: MutexSpec.pid) (sn: int) =
+    valid_p i /\ valid_p j /\ i <> j /\
+    w.bcast[(j, sn)] /\ w.heard[i][j] < sn
+
+  let ghost function recvRequest (w: world) (i j: MutexSpec.pid) (sn: int)
+    : world
+    requires { recvRequest_enbld w i j sn }
+    ensures  { result.loc = w.loc }
+    ensures  { result.load = w.load }
+    ensures  { result.cs = w.cs }
+    ensures  { SuzukiKasami.recvRequest_enbld (refn w) i j sn }
+    ensures  { refn result = SuzukiKasami.recvRequest (refn w) i j sn }
+  = { w with
+      heard = w.heard[i <- (w.heard[i])[j <- sn]] }
+
+  (* ---------------------------------------------------------------- *)
+  (* Token queue (payload access: requires the token Held)            *)
+  (* ---------------------------------------------------------------- *)
+
+  predicate enqueue_enbld (w: world) (i j: MutexSpec.pid) =
+    valid_p i /\ valid_p j /\ i <> j /\
+    w.loc = SuzukiKasami.Held i /\ not w.cs[i] /\
+    not w.load.pqueue[j] /\ w.heard[i][j] = w.load.pln[j] + 1
+
+  let ghost function enqueue (w: world) (i j: MutexSpec.pid) : world
+    requires { enqueue_enbld w i j }
+    ensures  { result.loc = w.loc }
+    ensures  { result.cs = w.cs }
+    ensures  { result.heard = w.heard }
+    ensures  { result.load.pln = w.load.pln }
+    ensures  { SuzukiKasami.enqueue_enbld (refn w) i j }
+    ensures  { refn result = SuzukiKasami.enqueue (refn w) i j }
+  = { w with load = { w.load with pqueue = w.load.pqueue[j <- true] } }
+
+  predicate sendToken_enbld (w: world) (i j: MutexSpec.pid) =
+    valid_p i /\ valid_p j /\ w.loc = SuzukiKasami.Held i /\
+    not w.cs[i] /\ w.load.pqueue[j]
+
+  let ghost function sendToken (w: world) (i j: MutexSpec.pid) : world
+    requires { sendToken_enbld w i j }
+    ensures  { result.loc = SuzukiKasami.InFlight j }
+    ensures  { result.cs = w.cs }
+    ensures  { result.heard = w.heard }
+    ensures  { result.load.pln = w.load.pln }
+    ensures  { result.load.pqueue = w.load.pqueue[j <- false] }
+    ensures  { SuzukiKasami.sendToken_enbld (refn w) i j }
+    ensures  { refn result = SuzukiKasami.sendToken (refn w) i j }
+  =
+    { w with
+      loc = SuzukiKasami.InFlight j;
+      load = { w.load with pqueue = w.load.pqueue[j <- false] } }
+
+  (* Delivery: the token arrives with its payload untouched. *)
+  predicate recvToken_enbld (w: world) (j: MutexSpec.pid) =
+    valid_p j /\ w.loc = SuzukiKasami.InFlight j
+
+  let ghost function recvToken (w: world) (j: MutexSpec.pid) : world
+    requires { recvToken_enbld w j }
+    ensures  { result.loc = SuzukiKasami.Held j }
+    ensures  { result.load = w.load }
+    ensures  { result.cs = w.cs }
+    ensures  { result.heard = w.heard }
+    ensures  { result.bcast = w.bcast }
+    ensures  { SuzukiKasami.recvToken_enbld (refn w) j }
+    ensures  { refn result = SuzukiKasami.recvToken (refn w) j }
+  = { w with loc = SuzukiKasami.Held j }
+
+  (* ---------------------------------------------------------------- *)
+  (* Critical section                                                 *)
+  (* ---------------------------------------------------------------- *)
+
+  predicate enterCS_enbld (w: world) (i: MutexSpec.pid) =
+    valid_p i /\ w.loc = SuzukiKasami.Held i /\ not w.cs[i]
+
+  let ghost function enterCS (w: world) (i: MutexSpec.pid) : world
+    requires { enterCS_enbld w i }
+    ensures  { result.loc = w.loc }
+    ensures  { result.load = w.load }
+    ensures  { result.cs = w.cs[i <- true] }
+    ensures  { result.heard = w.heard }
+    ensures  { SuzukiKasami.enterCS_enbld (refn w) i }
+    ensures  { refn result = SuzukiKasami.enterCS (refn w) i }
+  = { w with cs = w.cs[i <- true] }
+
+  (* On leaving, the holder updates its own served record in the
+     payload.  The Held conjunct is this machine's addition: the
+     payload is written only by the process holding the token. *)
+  predicate exitCS_enbld (w: world) (i: MutexSpec.pid) =
+    valid_p i /\ w.cs[i] /\ w.loc = SuzukiKasami.Held i
+
+  let ghost function exitCS (w: world) (i: MutexSpec.pid) : world
+    requires { exitCS_enbld w i }
+    ensures  { result.loc = w.loc }
+    ensures  { result.cs = w.cs[i <- false] }
+    ensures  { result.heard = w.heard }
+    ensures  { result.load.pqueue = w.load.pqueue }
+    ensures  { result.load.pln = w.load.pln[i <- w.heard[i][i]] }
+    ensures  { SuzukiKasami.exitCS_enbld (refn w) i }
+    ensures  { refn result = SuzukiKasami.exitCS (refn w) i }
+  = { w with cs = w.cs[i <- false];
+             load = { w.load with pln = w.load.pln[i <- w.heard[i][i]] } }
+
+  (* ---------------------------------------------------------------- *)
+  (* Transition relation and refinement                               *)
+  (* ---------------------------------------------------------------- *)
+
+  inductive stepind world world =
+    | step_request : forall w: world, i: MutexSpec.pid.
+        request_enbld w i -> stepind w (request w i)
+    | step_recvRequest : forall w: world, i j: MutexSpec.pid, sn: int.
+        recvRequest_enbld w i j sn -> stepind w (recvRequest w i j sn)
+    | step_enqueue : forall w: world, i j: MutexSpec.pid.
+        enqueue_enbld w i j -> stepind w (enqueue w i j)
+    | step_sendToken : forall w: world, i j: MutexSpec.pid.
+        sendToken_enbld w i j -> stepind w (sendToken w i j)
+    | step_recvToken : forall w: world, j: MutexSpec.pid.
+        recvToken_enbld w j -> stepind w (recvToken w j)
+    | step_enterCS : forall w: world, i: MutexSpec.pid.
+        enterCS_enbld w i -> stepind w (enterCS w i)
+    | step_exitCS : forall w: world, i: MutexSpec.pid.
+        exitCS_enbld w i -> stepind w (exitCS w i)
+
+  let ghost predicate step (w1: world) (w2: world) = stepind w1 w2
+
+  clone export refinement.Refinement with
+    type worldC      = world,
+    type worldA      = SuzukiKasami.world,
+    val refn         = refn,
+    predicate invC   = inv,
+    predicate invA   = SuzukiKasami.inv,
+    val initWorldC   = initWorld,
+    val initWorldA   = SuzukiKasami.initWorld,
+    val stepC        = step,
+    val stepA        = SuzukiKasami.step
+
+  (* ---------------------------------------------------------------- *)
+  (* Safety                                                           *)
+  (* ---------------------------------------------------------------- *)
+
+  goal mutualExclusion :
+    forall w: world, p q: MutexSpec.pid. reachableC w ->
+      valid_p p -> valid_p q -> w.cs[p] -> w.cs[q] -> p = q
+
+  goal mutualExclusion_by_refinement :
+    forall w: world. reachableC w -> SuzukiKasami.inv (refn w)
+
+  (* The holder-side guard this machine adds to exitCS restricts no
+     reachable behaviour: the abstraction's own invariant says a
+     process in its CS holds the token. *)
+  goal exitGuardIsNotRestrictive :
+    forall w: world, i: MutexSpec.pid. reachableC w ->
+      valid_p i -> w.cs[i] -> w.loc = SuzukiKasami.Held i
+
+  (* The abstract machine's sequence-number properties, holding of
+     the payload's own fields. *)
+  goal servedBoundedByRequested :
+    forall w: world, j: MutexSpec.pid. reachableC w ->
+      valid_p j -> w.load.pln[j] <= w.heard[j][j]
+
+  goal queuedProcessesWantTheToken :
+    forall w: world, p: MutexSpec.pid. reachableC w ->
+      valid_p p -> w.load.pqueue[p] -> w.load.pln[p] < w.heard[p][p]
+
+  (* Non-vacuity: from the initial state the token holder reaches its
+     critical section, exactly as in the machine being refined. *)
+  let lemma initialStateMakesProgress (w: world)
+    requires { initWorld w }
+    ensures  { exists w1 w2 : world.
+                 step w w1 /\ step w1 w2 /\ w2.cs[0] }
+  =
+    assert { valid_p 0 };
+    let w1 = request w 0 in
+    assert { stepind w w1 };
+    assert { enterCS_enbld w1 0 };
+    let w2 = enterCS w1 0 in
+    assert { stepind w1 w2 }
+
+end

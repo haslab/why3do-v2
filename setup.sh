@@ -40,6 +40,7 @@ install_pkg RicartAgrawala examples/mutualExclusionDistributed/RicartAgrawala.ml
 install_pkg RicartAgrawalaNet examples/mutualExclusionDistributed/RicartAgrawalaNet.mlw
 install_pkg tokenMutex     examples/mutualExclusionDistributed/tokenMutex.mlw
 install_pkg suzukiKasami   examples/mutualExclusionDistributed/suzukiKasami.mlw
+install_pkg suzukiKasamiPayload examples/mutualExclusionDistributed/suzukiKasamiPayload.mlw
 
 # mutualExclusionNeighbors
 install_pkg oneToken        examples/mutualExclusionNeighbors/oneToken.mlw

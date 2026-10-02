@@ -34,6 +34,12 @@ exclusion algorithms using message passing.
   carries) into proved properties
 - [suzukiKasami.mlw](suzukiKasami.mlw): Suzuki-Kasami distributed mutex
   algorithm using a token with a queue. Refines tokenMutex
+- [suzukiKasamiPayload.mlw](suzukiKasamiPayload.mlw): Suzuki-Kasami with
+  the token carrying its payload: the served-number record and the
+  waiting queue travel with the token instead of living in global
+  fields. Refines suzukiKasami, discharging its global-fields
+  limitation as a construction (payload locality) rather than an
+  assumption
 
 ## Refinement Hierarchy
 
@@ -46,6 +52,7 @@ graph TD
     ricart["RicartAgrawala.mlw<br/>(Ricart-Agrawala)"]
     ricartnet["RicartAgrawalaNet.mlw<br/>(replies in flight)"]
     suzuki["suzukiKasami.mlw<br/>(Suzuki-Kasami)"]
+    payload["suzukiKasamiPayload.mlw<br/>(token payload)"]
 
     token --> spec
     lamport --> spec
@@ -53,6 +60,7 @@ graph TD
     ricart --> spec
     ricartnet --> ricart
     suzuki --> token
+    payload --> suzuki
 ```
 
 ## Limitations
@@ -71,7 +79,10 @@ graph TD
 - suzukiKasami's token queue is a set, not a FIFO: safety here is the
   stronger result, but the arrival order that Suzuki-Kasami relies on
   for starvation-freedom is discarded, and the queue and last-request
-  numbers are global fields rather than a token payload
+  numbers are global fields rather than a token payload;
+  suzukiKasamiPayload discharges the data-placement half of this by
+  bundling the queue and served numbers into the token's payload,
+  though delivery is still one atomic step
 - Lamport.mlw has no request queues (see above); its `acks` component
   records acknowledgments per pair, standing in for the published
   algorithm's per-process queues

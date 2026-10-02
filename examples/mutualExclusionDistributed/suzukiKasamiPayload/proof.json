@@ -1,0 +1,31 @@
+{
+  "profile": [],
+  "proofs": {
+    "SuzukiKasamiPayload": {
+      "enqueue": { "prover": "cvc5@1.2.1", "time": 0.05 },
+      "enterCS": { "prover": "cvc5@1.2.1", "time": 0.05 },
+      "exitCS": { "prover": "cvc5@1.2.1", "time": 0.052 },
+      "exitGuardIsNotRestrictive": { "prover": "cvc5@1.2.1", "time": 0.091 },
+      "initWorld": { "prover": "cvc5@1.2.1", "time": 0.043 },
+      "initWorldA'refn": { "prover": "cvc5@1.2.1", "time": 0.012 },
+      "initWorldC'refn": { "prover": "cvc5@1.2.1", "time": 0.008 },
+      "initialStateMakesProgress": { "prover": "cvc5@1.2.1", "time": 0.085 },
+      "mutualExclusion": { "prover": "cvc5@1.2.1", "time": 0.098 },
+      "mutualExclusion_by_refinement": {
+        "prover": "cvc5@1.2.1",
+        "time": 0.01
+      },
+      "queuedProcessesWantTheToken": {
+        "prover": "cvc5@1.2.1",
+        "time": 0.149
+      },
+      "recvRequest": { "prover": "cvc5@1.2.1", "time": 0.048 },
+      "recvToken": { "prover": "cvc5@1.2.1", "time": 0.046 },
+      "request": { "prover": "alt-ergo@2.4.2", "time": 0.013 },
+      "sendToken": { "prover": "cvc5@1.2.1", "time": 0.053 },
+      "servedBoundedByRequested": { "prover": "cvc5@1.2.1", "time": 0.137 },
+      "stepA'refn": { "prover": "cvc5@1.2.1", "time": 0.058 },
+      "stepC'refn": { "prover": "alt-ergo@2.6.4", "time": 0.056 }
+    }
+  }
+}
