@@ -1,0 +1,160 @@
+(* ============================================================
+   Spanning tree: abstract specification.
+
+   The state of the system is a parent-pointer and distance table.
+   The invariant says the table is a tree rooted at a distinguished
+   root node: the root has distance 0, and every other valid node's
+   parent is a neighbor whose distance is one less.
+
+   The step relation repairs the table locally: a node may re-attach
+   to any neighbor at distance one less than its own
+   (distance-preserving re-parenting), and the root may reset its
+   distance to 0 (enabled only when the invariant is already
+   violated, hence vacuous along invariant states).
+
+   Rootedness (reachesRoot) and graph paths (gpath) are defined
+   here.  The concrete machine in dim.mlw adds the algorithm's slack
+   invariant and discharges that the tree is rooted and that the
+   distances are BFS-optimal.
+
+   Topology   node = int, valid below n_nodes; an uninterpreted edge
+              relation, assumed symmetric and irreflexive; every
+              valid non-root node has a valid neighbor; a
+              distinguished root node
+
+   State      parent    each node's current parent pointer
+              distance  each node's current distance estimate
+
+   Actions    root_step  the root resets its distance to 0
+              reparent   a node re-attaches to a neighbor at distance
+                         one less (distances unchanged)
+
+   Invariant  distance[root] = 0; every valid non-root node's parent
+              is a valid neighbor at distance one less; distances
+              are non-negative
+
+   Results over reachable states
+     - treeIsRooted: following parent pointers from any valid node,
+       the root is reached in exactly the node's distance steps
+   ============================================================ *)
+
+module SpanningTree
+
+  use export int.Int
+  use export map.Map
+
+  type node = int
+
+  (* number of nodes *)
+  val constant n_nodes : int
+  axiom n_nodes_bounds : 2 <= n_nodes
+
+  (* the root node *)
+  val constant root : node
+  axiom root_bounds : 0 <= root < n_nodes
+
+  predicate validNd (n : node) = 0 <= n < n_nodes
+
+  (* abstract adjacency relation *)
+  predicate edge (u v : node)
+
+  axiom edge_sym : forall u v : node. edge u v -> edge v u
+  axiom no_self_edge : forall u : node. not (edge u u)
+
+  (* every valid non-root node has a valid neighbor *)
+  axiom has_neighbor : forall n : node.
+    validNd n -> n <> root ->
+    exists v : node. validNd v /\ edge n v
+
+  type world = {
+    parent   : map node node;
+    distance : map node int
+  }
+
+  (* the parent chain from n reaches the root in k steps *)
+  inductive reachesRoot (map node node) node int =
+  | c0 : forall par : map node node. reachesRoot par root 0
+  | cS : forall par : map node node, n : node, k : int.
+      validNd n -> n <> root ->
+      reachesRoot par par[n] k ->
+      reachesRoot par n (k + 1)
+
+  (* graph path from a to b of length l, over valid nodes *)
+  inductive gpath node node int =
+  | gp0 : forall a : node. gpath a a 0
+  | gpS : forall a b c : node, l : int.
+      validNd b -> validNd c -> edge b c ->
+      gpath a b l ->
+      gpath a c (l + 1)
+
+  (* a non-root node is consistent when its parent is a valid
+     neighbor one step closer to the root *)
+  predicate node_consistent (w : world) (n : node) =
+    n <> root ->
+    let p = w.parent[n] in
+    validNd p /\ edge n p /\ w.distance[n] = w.distance[p] + 1
+
+  predicate inv (w : world) =
+    w.distance[root] = 0 /\
+    (forall n : node. validNd n -> node_consistent w n) /\
+    (forall n : node. validNd n -> w.distance[n] >= 0)
+
+  (* Under the invariant, following parent pointers from any valid
+     node strictly decreases the distance, so every chain reaches
+     the root in exactly the node's distance steps. *)
+  let rec lemma rooted (w : world) (n : node)
+    requires { inv w }
+    requires { validNd n }
+    variant  { w.distance[n] }
+    ensures  { reachesRoot w.parent n (w.distance[n]) }
+  = if n <> root then begin
+      let p = w.parent[n] in
+      rooted w p
+    end
+
+  (* the root resets its distance to 0 *)
+  predicate root_enbld (w : world) =
+    w.distance[root] <> 0
+
+  let ghost function root_step (w : world) : world
+    requires { root_enbld w }
+    ensures  { inv w -> inv result }
+  = { parent   = w.parent;
+      distance = w.distance[root <- 0] }
+
+  (* a node re-attaches to a neighbor at distance one less: the
+     table remains a tree, the distances do not change *)
+  predicate reparent_enbld (w : world) (h p : node) =
+    validNd h /\ h <> root /\
+    validNd p /\ edge h p /\
+    w.distance[h] = w.distance[p] + 1
+
+  let ghost function reparent (w : world) (h p : node) : world
+    requires { reparent_enbld w h p }
+    ensures  { inv w -> inv result }
+  = { parent   = w.parent[h <- p];
+      distance = w.distance }
+
+  inductive stepind world world =
+  | root_step : forall w : world.
+      root_enbld w -> stepind w (root_step w)
+  | reparent : forall w : world, h p : node.
+      reparent_enbld w h p -> stepind w (reparent w h p)
+
+  let ghost predicate step (w1 : world) (w2 : world) = stepind w1 w2
+
+  predicate initWorld_p (w : world) = inv w
+  let ghost predicate initWorld (w : world) = initWorld_p w
+
+  clone export inductiveness.Inductiveness with
+    type world,
+    predicate inv,
+    val step,
+    val initWorld
+
+  goal treeIsRooted :
+    forall w : world. reachable w ->
+      forall n : node. validNd n ->
+        reachesRoot w.parent n (w.distance[n])
+
+end

@@ -16,7 +16,8 @@
     "RicartAgrawala", "RicartAgrawalaNet",
     "tokenMutex", "suzukiKasami", "suzukiKasamiPayload",
     "raftLedger", "raftCore", "raftNet",
-    "controlledFlooding"
+    "controlledFlooding",
+    "spanningTree", "dim"
   ],
   "provers": [
     "cvc5@1.2.1", "cvc5@1.0.3", "alt-ergo@2.6.4", "alt-ergo@2.4.2", "z3@5.1.0", "z3@4.11.2", "eprover@2.6"

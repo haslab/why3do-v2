@@ -71,6 +71,10 @@ install_pkg raftLedger                      examples/raft/raftLedger.mlw
 install_pkg raftCore                        examples/raft/raftCore.mlw
 install_pkg raftNet                         examples/raft/raftNet.mlw
 
+# spanningTree (student project: Rui Neto, Vasco Mota)
+install_pkg spanningTree              examples/spanningTree/spanningTree.mlw
+install_pkg dim                       examples/spanningTree/dim.mlw
+
 # controlledFlooding (student project: Gonçalo Caixeiro)
 install_pkg controlledFlooding              examples/controlledFlooding/controlledFlooding.mlw
 

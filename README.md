@@ -21,6 +21,7 @@ for proof management.
 | [examples/paxos/](examples/paxos) | Paxos consensus, two-step refinement |
 | [examples/raft/](examples/raft) | Raft leader election, three-step refinement chain |
 | [examples/controlledFlooding/](examples/controlledFlooding) | Controlled flooding broadcast |
+| [examples/spanningTree/](examples/spanningTree) | DIM self-stabilizing spanning tree (stable phase, closure property) |
 | [wip/](wip) | Work-in-progress examples (not part of the library) |
 
 Cross-file dependencies in why3find are resolved through installed

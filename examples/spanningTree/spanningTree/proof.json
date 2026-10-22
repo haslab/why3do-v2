@@ -1,0 +1,13 @@
+{
+  "profile": [],
+  "proofs": {
+    "SpanningTree": {
+      "initWorld'refn": { "prover": "cvc5@1.2.1", "time": 0.003 },
+      "reparent": { "prover": "cvc5@1.2.1", "time": 0.008 },
+      "root_step": { "prover": "cvc5@1.2.1", "time": 0.003 },
+      "rooted": { "prover": "cvc5@1.2.1", "time": 0.008 },
+      "step'refn": { "prover": "cvc5@1.2.1", "time": 0.07 },
+      "treeIsRooted": { "prover": "alt-ergo@2.6.4", "time": 0.008 }
+    }
+  }
+}

@@ -1,0 +1,157 @@
+(* ============================================================
+   DIM self-stabilizing spanning-tree algorithm (stable phase).
+
+   Contribution by: Rui Alexandre Dias Neto, Vasco José Machado Mota
+
+   Adapted to the why3do refinement framework.
+
+   Each node keeps a parent pointer and a distance estimate.  A node
+   corrects itself by adopting as parent a neighbor of minimum
+   distance, and the root resets its distance to 0.  The stable
+   (legitimate) phase is characterized by the parent/distance table
+   being a tree rooted at the root (SpanningTree.inv) together with
+   the slack property: distances differ by at most one along an
+   edge.  Under both, adopting a minimum-distance neighbor is
+   distance-preserving, so every correction refines an abstract
+   re-parenting step.
+
+   Topology   as in SpanningTree (abstract symmetric edge relation,
+              distinguished root)
+
+   State      parent, distance (a SpanningTree world, refined by
+              the identity map)
+
+   Actions    reset_root  the root resets its distance to 0 (enabled
+                          only when the invariant is violated)
+              adopt h p   node h adopts neighbor p of minimum
+                          distance, setting its own distance to
+                          distance[p] + 1
+
+   Invariant  SpanningTree.inv, plus slack: along an edge, distances
+              differ by at most one
+
+   Results over reachable (legitimate) states
+     - treeIsRooted: following parent pointers from any valid node,
+       the root is reached in exactly the node's distance steps
+     - distanceIsDepth: the chain length to the root is the node's
+       distance
+     - distanceIsOptimal: the distances are BFS depths -- no graph
+       path from the root to a node is shorter than its distance
+
+   Limitations: only the stable phase is modelled -- closure of the
+   legitimate states, not convergence towards them from an arbitrary
+   state; the root's correction step is vacuous in the stable phase;
+   and the existence of legitimate states is not derivable from the
+   axioms on the abstract edge relation.
+   ============================================================ *)
+
+module Dim
+
+  use spanningTree.SpanningTree
+  use int.Int
+  use map.Map
+  use map.MapEq
+
+  type world = SpanningTree.world
+
+  (* every DIM state is an abstract state: the refinement map is
+     the identity *)
+  let ghost function refn (w : world) : SpanningTree.world
+  = w
+
+  (* the algorithm's extra content: distances differ by at most one
+     along an edge *)
+  predicate slack (w : world) =
+    forall u v : node. validNd u -> validNd v -> edge u v ->
+      w.distance[u] <= w.distance[v] + 1
+
+  predicate inv (w : world) =
+    SpanningTree.inv w /\ slack w
+
+  (* the root resets its distance to 0 *)
+  predicate reset_root_enbld (w : world) =
+    w.distance[root] <> 0
+
+  let ghost function reset_root (w : world) : world
+    requires { reset_root_enbld w }
+    ensures  { inv w -> inv result }
+    ensures  { SpanningTree.root_enbld (refn w) }
+    ensures  { refn result = SpanningTree.root_step (refn w) }
+  = { parent   = w.parent;
+      distance = w.distance[root <- 0] }
+
+  (* node h adopts neighbor p of minimum distance *)
+  predicate adopt_enbld (w : world) (h p : node) =
+    validNd h /\ h <> root /\
+    validNd p /\ edge h p /\
+    (forall v : node. validNd v -> edge h v ->
+       w.distance[p] <= w.distance[v])
+
+  (* In the stable phase the current parent of h is a minimum-
+     distance neighbor (by consistency and slack), so adopting p
+     preserves h's distance. *)
+  let lemma stable_distance (w : world) (h p : node)
+    requires { inv w }
+    requires { adopt_enbld w h p }
+    ensures  { w.distance[h] = w.distance[p] + 1 }
+    ensures  { w.distance[h <- w.distance[p] + 1] = w.distance }
+  = let q = w.parent[h] in
+    assert { validNd q /\ edge h q /\ w.distance[h] = w.distance[q] + 1 };
+    assert { w.distance[p] <= w.distance[q] };
+    assert { w.distance[h] <= w.distance[p] + 1 };
+    assert { w.distance[h] = w.distance[p] + 1 };
+    assert { forall i : node.
+      w.distance[h <- w.distance[p] + 1][i] = w.distance[i] };
+    assert { w.distance[h <- w.distance[p] + 1] = w.distance }
+
+  let ghost function adopt (w : world) (h p : node) : world
+    requires { adopt_enbld w h p }
+    ensures  { inv w -> inv result }
+    ensures  { inv w -> SpanningTree.reparent_enbld (refn w) h p }
+    ensures  { inv w -> refn result = SpanningTree.reparent (refn w) h p }
+  = if inv w then stable_distance w h p;
+    { parent   = w.parent[h <- p];
+      distance = w.distance[h <- w.distance[p] + 1] }
+
+  inductive stepind world world =
+  | reset_root : forall w : world.
+      reset_root_enbld w -> stepind w (reset_root w)
+  | adopt : forall w : world, h p : node.
+      adopt_enbld w h p -> stepind w (adopt w h p)
+
+  let ghost predicate step (w1 : world) (w2 : world) = stepind w1 w2
+
+  predicate initWorld_p (w : world) = inv w
+  let ghost predicate initWorld (w : world) = initWorld_p w
+
+  clone refinement.Refinement with
+    type worldC = world,
+    type worldA = SpanningTree.world,
+    val refn,
+    predicate invC = inv,
+    predicate invA = SpanningTree.inv,
+    val initWorldC = initWorld,
+    val initWorldA = SpanningTree.initWorld,
+    val stepC = step,
+    val stepA = SpanningTree.step
+
+  (* Safety properties over reachable (legitimate) states *)
+
+  goal treeIsRooted :
+    forall w : world. reachableC w ->
+      forall n : node. validNd n ->
+        SpanningTree.reachesRoot w.parent n (w.distance[n])
+
+  goal distanceIsDepth :
+    forall w : world, n : node, k : int.
+      reachableC w -> validNd n ->
+      SpanningTree.reachesRoot w.parent n k ->
+      k = w.distance[n]
+
+  goal distanceIsOptimal :
+    forall w : world, n : node, l : int.
+      reachableC w -> validNd n ->
+      SpanningTree.gpath root n l ->
+      w.distance[n] <= l
+
+end
