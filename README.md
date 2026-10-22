@@ -1,4 +1,4 @@
-# why3dofind
+# why3do-v2
 
 A WhyML library for reasoning about state machine specifications and
 distributed systems. This is V2 of the
