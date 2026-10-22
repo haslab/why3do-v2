@@ -25,7 +25,7 @@ exclusion algorithms using message passing.
   current request)
 - [RicartAgrawala.mlw](RicartAgrawala.mlw): Ricart-Agrawala distributed
   mutex algorithm. Refines MutexSpec
-  *(Original model by: Claudia Pinto, Patricia Carvalho. Adapted to the
+  *(Original model by: Claudia Faria, Patricia Bastos. Adapted to the
   why3do refinement framework.)*
 - [RicartAgrawalaNet.mlw](RicartAgrawalaNet.mlw): Ricart-Agrawala with
   replies in flight: grant_Reply is split into send_Reply and
@@ -34,6 +34,8 @@ exclusion algorithms using message passing.
   carries) into proved properties
 - [suzukiKasami.mlw](suzukiKasami.mlw): Suzuki-Kasami distributed mutex
   algorithm using a token with a queue. Refines tokenMutex
+  *(Original model by: Renato Garcia. Adapted to the why3do refinement
+  framework.)*
 - [suzukiKasamiPayload.mlw](suzukiKasamiPayload.mlw): Suzuki-Kasami with
   the token carrying its payload: the served-number record and the
   waiting queue travel with the token instead of living in global

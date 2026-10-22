@@ -1,6 +1,11 @@
 (* ============================================================
    Suzuki-Kasami distributed mutual exclusion.
 
+   Original model by:
+     Renato Garcia
+
+   Adapted to the why3do refinement framework.
+
    Refines TokenMutex, and hence MutexSpec.
 
    A single token circulates.  A process that wants the critical section

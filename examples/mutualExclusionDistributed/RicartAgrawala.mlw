@@ -2,7 +2,7 @@
 (* Ricart-Agrawala distributed mutual exclusion.
 
    Original model by:
-     Cláudia Pinto, Patrícia Carvalho
+     Cláudia Faria, Patrícia Bastos
 
    Adapted to the why3do refinement framework.
 
