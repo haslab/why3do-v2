@@ -1,8 +1,30 @@
 # why3dofind
 
 A WhyML library for reasoning about state machine specifications and
-distributed systems, using [why3find](https://why3find.readthedocs.io/)
-for proof management.
+distributed systems. This is V2 of the
+[why3-do](https://github.com/haslab/why3do) library: the same
+inductive-invariant and specification-refinement methodology, with
+proof management moved from Why3 proof sessions to
+[why3find](https://why3find.readthedocs.io/). The repo carries the
+why3find proof certificates (`proof.json`) alongside every example,
+recording which prover or tactic combination closes each goal, so
+the whole library replays with a single command and no interactive
+sessions are required.
+
+The methodology is described in:
+
+- Cláudio Belo Lourenço and Jorge Sousa Pinto. *Auto-active
+  verification of distributed systems and specification refinements
+  with Why3-do.* Science of Computer Programming, 247, 2026.
+- Cláudio Belo Lourenço and Jorge Sousa Pinto. *Why3-do: The Way of
+  Harmonious Distributed System Proofs.* ESOP 2022, LNCS 13240.
+
+Relative to V1, the `networkModels` library is gone: network
+semantics are no longer a separate theory, but are modeled
+per-example as refinement layers over an abstract machine -- see the
+channel layers `LamportNet.mlw`, `RicartAgrawalaNet.mlw` and
+`raftNet.mlw`, which refine fused send/receive steps into explicit
+messages in flight.
 
 ## Structure
 
